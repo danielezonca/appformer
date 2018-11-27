@@ -77,4 +77,12 @@ public interface ResourceTypeDefinition {
      * @return the resource category
      */
     Category getCategory();
+
+    /**
+     * Indicates if the current parameter path needs to be skipped (for instance hide a technical file)
+     * @return
+     */
+    default boolean skip(Path path) {
+        return false;
+    }
 }
