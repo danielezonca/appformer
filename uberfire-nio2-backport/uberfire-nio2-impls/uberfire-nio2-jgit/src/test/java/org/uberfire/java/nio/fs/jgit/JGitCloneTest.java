@@ -16,16 +16,20 @@
 
 package org.uberfire.java.nio.fs.jgit;
 
+import static java.util.Arrays.asList;
+import static java.util.stream.Collectors.toSet;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Set;
 
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.hooks.PostCommitHook;
@@ -35,6 +39,7 @@ import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.storage.file.FileBasedConfig;
 import org.eclipse.jgit.transport.CredentialsProvider;
 import org.junit.Test;
+import org.uberfire.commons.config.ConfigProperties;
 import org.uberfire.java.nio.fs.jgit.util.Git;
 import org.uberfire.java.nio.fs.jgit.util.commands.Clone;
 import org.uberfire.java.nio.fs.jgit.util.commands.Commit;
@@ -62,9 +67,11 @@ public class JGitCloneTest extends AbstractTestInfra {
         final Git cloned = new Clone(gitTarget,
                                      gitSource.getAbsolutePath(),
                                      false,
+                                     null,
                                      CredentialsProvider.getDefault(),
                                      null,
-                                     null).execute().get();
+                                     null,
+                                     true).execute().get();
 
         assertThat(cloned).isNotNull();
 
@@ -91,9 +98,11 @@ public class JGitCloneTest extends AbstractTestInfra {
         final Git cloned = new Clone(gitTarget,
                                      gitSource.getAbsolutePath(),
                                      false,
+                                     null,
                                      CredentialsProvider.getDefault(),
                                      null,
-                                     null).execute().get();
+                                     null,
+                                     true).execute().get();
 
         assertThat(cloned).isNotNull();
 
@@ -104,9 +113,11 @@ public class JGitCloneTest extends AbstractTestInfra {
         assertThatThrownBy(() -> new Clone(gitTarget,
                                            gitSource.getAbsolutePath(),
                                            false,
+                                           null,
                                            CredentialsProvider.getDefault(),
                                            null,
-                                           null).execute().get())
+                                           null,
+                                           true).execute().get())
                 .isInstanceOf(Clone.CloneException.class);
     }
 
@@ -131,9 +142,11 @@ public class JGitCloneTest extends AbstractTestInfra {
         final Git cloned = new Clone(gitTarget,
                                      gitSource.getAbsolutePath(),
                                      false,
+                                     null,
                                      CredentialsProvider.getDefault(),
                                      null,
-                                     hooksDir).execute().get();
+                                     hooksDir,
+                                     true).execute().get();
 
         assertThat(cloned).isNotNull();
 
@@ -161,7 +174,7 @@ public class JGitCloneTest extends AbstractTestInfra {
     }
 
     private Git setupGitRepo(File gitSource, File hooksDir) throws IOException {
-        final Git origin = new CreateRepository(gitSource, hooksDir).execute().get();
+        final Git origin = new CreateRepository(gitSource, hooksDir, true).execute().get();
 
         new Commit(origin,
                    "user_branch",
@@ -203,12 +216,15 @@ public class JGitCloneTest extends AbstractTestInfra {
         final Git origin = setupGitRepo(gitSource, null);
 
         boolean isMirror = false;
+        boolean sslVerify = true;
         final Git clonedNotMirror = new Clone(gitTarget,
                                               gitSource.getAbsolutePath(),
                                               isMirror,
+                                              null,
                                               CredentialsProvider.getDefault(),
                                               null,
-                                              null).execute().get();
+                                              null,
+                                              sslVerify).execute().get();
 
         assertThat(clonedNotMirror).isNotNull();
 
@@ -217,10 +233,13 @@ public class JGitCloneTest extends AbstractTestInfra {
         assertNotEquals(Clone.REFS_MIRRORED, config.getString("remote", "origin", "fetch"));
         assertNull(config.getString("remote", "origin", "mirror"));
         assertEquals(gitSource.getAbsolutePath(), config.getString("remote", "origin", "url"));
+
+        boolean missingDefaultValue = true;
+        assertEquals(missingDefaultValue, config.getBoolean("http", null, "sslVerify", missingDefaultValue));
     }
 
     @Test
-    public void cloneMirrorRepoConfigTest() throws IOException {
+    public void cloneMirrorRepoNoSSLVerifyConfigTest() throws IOException {
         final File parentFolder = createTempDirectory();
 
         final File gitSource = new File(parentFolder,
@@ -231,13 +250,18 @@ public class JGitCloneTest extends AbstractTestInfra {
 
         final Git origin = setupGitRepo(gitSource, null);
 
+        assertTrue(provider.config.isSslVerify());
+
         boolean isMirror = true;
+        boolean sslVerify = false;
         final Git clonedMirror = new Clone(gitTarget,
                                            gitSource.getAbsolutePath(),
                                            isMirror,
+                                           null,
                                            CredentialsProvider.getDefault(),
                                            null,
-                                           null).execute().get();
+                                           null,
+                                           sslVerify).execute().get();
 
         assertThat(clonedMirror).isNotNull();
 
@@ -246,6 +270,57 @@ public class JGitCloneTest extends AbstractTestInfra {
         assertEquals(Clone.REFS_MIRRORED, config.getString("remote", "origin", "fetch"));
         assertNull(config.getString("remote", "origin", "mirror"));
         assertEquals(gitSource.getAbsolutePath(), config.getString("remote", "origin", "url"));
+        assertEquals(sslVerify, config.getBoolean("http", null, "sslVerify", !sslVerify));
+
+    }
+
+    @Test
+    public void testCloneMultipleBranches() throws Exception {
+        final File parentFolder = createTempDirectory();
+
+        final File gitSource = new File(parentFolder,
+                                        SOURCE_GIT + ".git");
+
+        final File gitTarget = new File(parentFolder,
+                                        TARGET_GIT + ".git");
+
+        final Git origin = setupGitRepo(gitSource, null);
+
+        commit(origin,
+               "master",
+               "first",
+               content("dir1/file.txt", "foo"),
+               content("dir2/file2.txt", "bar"),
+               content("file3.txt", "moogah"));
+
+        branch(origin, "master", "dev");
+        commit(origin,
+               "dev",
+               "second",
+               content("dir1/file.txt", "foo1"),
+               content("file3.txt", "bar1"));
+
+        branch(origin, "master", "ignored");
+        commit(origin,
+               "ignored",
+               "third",
+               content("dir1/file.txt", "foo2"));
+
+        final Git cloned = new Clone(gitTarget,
+                                           gitSource.getAbsolutePath(),
+                                           false,
+                                           asList("master", "dev"),
+                                           CredentialsProvider.getDefault(),
+                                           null,
+                                           null,
+                                           false).execute().get();
+
+        assertThat(cloned).isNotNull();
+        final Set<String> clonedRefs = listRefs(cloned).stream()
+                .map(ref -> ref.getName())
+                .collect(toSet());
+        assertThat(clonedRefs).hasSize(2);
+        assertThat(clonedRefs).containsExactly("refs/heads/master", "refs/heads/dev");
     }
 
 }

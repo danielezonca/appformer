@@ -18,12 +18,12 @@ package org.uberfire.ext.wires.core.grids.client.model.impl;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -47,7 +47,7 @@ public class BaseGridData implements GridData {
     protected List<GridColumn<?>> columns = new ArrayList<>();
     protected List<SelectedCell> selectedCells = new ArrayList<>();
     protected List<SelectedCell> selectedHeaderCells = new ArrayList<>();
-    protected int headerRowCount = 1;
+    protected int headerRowCount = 0;
 
     protected BaseGridDataIndexManager indexManager = new BaseGridDataIndexManager(this);
     protected BaseGridDataSelectionsManager selectionsManager = new BaseGridDataSelectionsManager(this);
@@ -121,10 +121,11 @@ public class BaseGridData implements GridData {
 
         removeColumn(column);
 
-        //Destroy column data
+        //Destroy column related cell
         for (GridRow row : rows) {
             ((BaseGridRow) row).deleteCell(index);
-            final Map<Integer, GridCell<?>> clone = new HashMap<Integer, GridCell<?>>(row.getCells());
+            //Shift all cells according to the removed one
+            final Map<Integer, GridCell<?>> clone = new TreeMap<>(row.getCells());
             for (Map.Entry<Integer, GridCell<?>> e : clone.entrySet()) {
                 if (e.getKey() > index) {
                     ((BaseGridRow) row).deleteCell(e.getKey());
@@ -298,7 +299,7 @@ public class BaseGridData implements GridData {
 
     @Override
     public void setHeaderRowCount(final int headerRowCount) {
-        if (!(headerRowCount > 0)) {
+        if (!(headerRowCount >= 0)) {
             throw new IllegalStateException("headerRowCount");
         }
         this.headerRowCount = headerRowCount;
@@ -738,10 +739,13 @@ public class BaseGridData implements GridData {
         GridWidthMetadata gridWidthMetadata = new GridWidthMetadata(optionalCurrentWidth);
         int visibleWidth = getVisibleWidth();
 
+        double calculatedWidth;
         if (gridWidthMetadata.numberOfAutoColumn < 2) {
-            return visibleWidth - gridWidthMetadata.fixedWidth;
+            calculatedWidth = visibleWidth - gridWidthMetadata.fixedWidth;
+        } else {
+            calculatedWidth = (visibleWidth - gridWidthMetadata.fixedWidth) / (gridWidthMetadata.numberOfAutoColumn - 1);
         }
-        return (visibleWidth - gridWidthMetadata.fixedWidth) / (gridWidthMetadata.numberOfAutoColumn - 1);
+        return Math.max(calculatedWidth, column.getMinimumWidth());
     }
 
     private class GridWidthMetadata {

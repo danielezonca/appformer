@@ -18,6 +18,7 @@ package org.uberfire.java.nio.fs.jgit.util.commands;
 
 import java.io.File;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import org.eclipse.jgit.internal.ketch.KetchLeaderCache;
@@ -29,6 +30,7 @@ import org.eclipse.jgit.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.uberfire.commons.data.Pair;
+import org.uberfire.java.nio.fs.jgit.JGitFileSystemProviderConfiguration;
 import org.uberfire.java.nio.fs.jgit.util.Git;
 
 import static java.util.Collections.emptyList;
@@ -41,27 +43,49 @@ public class Clone {
     public static final String REFS_MIRRORED = "+refs/heads/*:refs/remotes/origin/*";
     private final File repoDir;
     private final String origin;
+    private final List<String> branches;
     private final CredentialsProvider credentialsProvider;
     private final boolean isMirror;
     private final KetchLeaderCache leaders;
     private final File hookDir;
+    private final boolean sslVerify;
 
     private Logger logger = LoggerFactory.getLogger(Clone.class);
+    public Clone(final File directory,
+                 final String origin,
+                 final boolean isMirror,
+                 final List<String> branches,
+                 final CredentialsProvider credentialsProvider,
+                 final KetchLeaderCache leaders,
+                 final File hookDir) {
+        this(directory,
+             origin,
+             isMirror,
+             branches,
+             credentialsProvider,
+             leaders,
+             hookDir,
+             JGitFileSystemProviderConfiguration.DEFAULT_GIT_HTTP_SSL_VERIFY);
+    }
 
     public Clone(final File directory,
                  final String origin,
                  final boolean isMirror,
+                 final List<String> branches,
                  final CredentialsProvider credentialsProvider,
                  final KetchLeaderCache leaders,
-                 final File hookDir) {
+                 final File hookDir,
+                 final boolean sslVerify) {
         this.repoDir = checkNotNull("directory",
                                     directory);
         this.origin = checkNotEmpty("origin",
                                     origin);
         this.isMirror = isMirror;
+        this.branches = branches;
         this.credentialsProvider = credentialsProvider;
         this.leaders = leaders;
         this.hookDir = hookDir;
+        this.sslVerify = sslVerify;
     }
 
     public Optional<Git> execute() {
@@ -74,7 +98,8 @@ public class Clone {
         }
 
         final Git git = Git.createRepository(repoDir,
-                                             hookDir);
+                                             hookDir,
+                                             sslVerify);
 
         if (git != null) {
             try {
@@ -99,6 +124,8 @@ public class Clone {
                 }
 
                 git.setHeadAsInitialized();
+
+                BranchUtil.deleteUnfilteredBranches(git.getRepository(), branches);
 
                 return Optional.of(git);
             } catch (Exception e) {

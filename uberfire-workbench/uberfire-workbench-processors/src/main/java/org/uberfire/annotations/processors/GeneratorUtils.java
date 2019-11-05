@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.inject.Qualifier;
 import javax.lang.model.element.AnnotationMirror;
@@ -122,6 +123,28 @@ public class GeneratorUtils {
         }
 
         return zeroArgMethod;
+    }
+
+    public static ExecutableElement getSetContentMethodName(TypeElement classElement, ProcessingEnvironment processingEnvironment) {
+        final Types typeUtils = processingEnvironment.getTypeUtils();
+        final TypeMirror requiredReturnType = typeUtils.getNoType(TypeKind.VOID);
+
+        return getUniqueAnnotatedMethod(
+                classElement,
+                processingEnvironment,
+                APIModule.getSetContentClass(),
+                requiredReturnType,
+                new String[]{"java.lang.String"});
+    }
+
+    public static ExecutableElement getGetContentMethodName(TypeElement classElement, ProcessingEnvironment processingEnvironment) {
+        return getUniqueAnnotatedMethod(classElement,
+                                        processingEnvironment,
+                                        APIModule.getGetContentClass(),
+                                        new TypeMirror[]{
+                                                processingEnvironment.getElementUtils().getTypeElement("elemental2.promise.Promise").asType()
+                                        },
+                                        NO_PARAMS);
     }
 
     /**
@@ -1151,14 +1174,12 @@ public class GeneratorUtils {
     }
 
     // Lookup a public method name with the given annotation. The method must be
-    // public, non-static, have a return-type of WorkbenchMenuBar and take zero
-    // parameters.
+    // public, non-static, void and take one parameter.
     private static String getMenuBarMethodName(final TypeElement classElement,
                                                final ProcessingEnvironment processingEnvironment,
                                                final String annotationName) throws GenerationException {
         final Types typeUtils = processingEnvironment.getTypeUtils();
         final Elements elementUtils = processingEnvironment.getElementUtils();
-        final TypeMirror requiredReturnType = elementUtils.getTypeElement("org.uberfire.workbench.model.menu.Menus").asType();
         final List<ExecutableElement> methods = ElementFilter.methodsIn(classElement.getEnclosedElements());
 
         ExecutableElement match = null;
@@ -1172,11 +1193,10 @@ public class GeneratorUtils {
                               annotationName) == null) {
                 continue;
             }
-            if (!typeUtils.isAssignable(actualReturnType,
-                                        requiredReturnType)) {
+            if (TypeKind.VOID != actualReturnType.getKind()) {
                 continue;
             }
-            if (e.getParameters().size() != 0) {
+            if (e.getParameters().size() != 1) {
                 continue;
             }
             if (e.getModifiers().contains(Modifier.STATIC)) {

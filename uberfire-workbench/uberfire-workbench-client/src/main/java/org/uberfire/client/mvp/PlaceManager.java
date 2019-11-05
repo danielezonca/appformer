@@ -108,8 +108,16 @@ public interface PlaceManager {
               final HasWidgets addTo);
 
     @JsIgnore
+    void goTo(final String id,
+              final HTMLElement addTo);
+
+    @JsIgnore
     void goTo(final PlaceRequest place,
               final HTMLElement addTo);
+
+    @JsIgnore
+    void goTo(final PlaceRequest place,
+              final elemental2.dom.HTMLElement addTo);
 
     /**
      * Finds the <i>currently open</i> activity that handles the given PlaceRequest by ID. No attempt is made to match
@@ -177,6 +185,8 @@ public interface PlaceManager {
     boolean closeAllPlacesOrNothing();
 
     boolean canClosePlace(PlaceRequest place);
+
+    boolean canCloseAllPlaces();
 
     /**
      * @return All opened PlaceRequests that cannot be closed (@onMayClose method returns false).

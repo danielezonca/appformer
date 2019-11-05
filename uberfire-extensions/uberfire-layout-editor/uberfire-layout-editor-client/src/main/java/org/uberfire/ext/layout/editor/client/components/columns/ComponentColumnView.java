@@ -36,11 +36,13 @@ import org.uberfire.client.mvp.UberElement;
 import org.uberfire.client.workbench.docks.UberfireDocksInteractionEvent;
 import org.uberfire.ext.layout.editor.api.editor.LayoutComponent;
 import org.uberfire.ext.layout.editor.api.editor.LayoutTemplate;
+import org.uberfire.ext.layout.editor.client.api.LayoutDragComponent;
 import org.uberfire.ext.layout.editor.client.api.RenderingContext;
 import org.uberfire.ext.layout.editor.client.infra.ColumnDrop;
 import org.uberfire.ext.layout.editor.client.infra.ContainerResizeEvent;
 import org.uberfire.ext.layout.editor.client.infra.DragComponentEndEvent;
 import org.uberfire.ext.layout.editor.client.infra.DragHelperComponentColumn;
+import org.uberfire.ext.layout.editor.client.infra.LayoutEditorFocusController;
 import org.uberfire.ext.layout.editor.client.resources.i18n.CommonConstants;
 import org.uberfire.ext.layout.editor.client.widgets.KebabWidget;
 import org.uberfire.ext.properties.editor.model.PropertyEditorCategory;
@@ -94,6 +96,8 @@ public class ComponentColumnView
     @Inject
     private Document document;
     private ColumnDrop.Orientation contentDropOrientation;
+    @Inject
+    LayoutEditorFocusController layoutEditorFocusController;
 
     @Inject
     private DragHelperComponentColumn helper;
@@ -533,6 +537,7 @@ public class ComponentColumnView
             HTMLElement previewWidget = getPreviewElement();
             content.appendChild(kebabWidget.getElement());
             content.appendChild(previewWidget);
+            layoutEditorFocusController.restoreFocus();
         });
     }
 
@@ -599,4 +604,9 @@ public class ComponentColumnView
         removeCSSClass(colUp,
                        "componentDropInColumnPreview");
     }
+    
+    public LayoutDragComponent getLayoutDragComponent() {
+        return helper.getLayoutDragComponent();
+    }
+    
 }

@@ -16,9 +16,12 @@
 package org.guvnor.common.services.project.backend.server;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.HashMap;
 import java.util.Optional;
@@ -31,8 +34,11 @@ import org.guvnor.common.services.project.model.WorkspaceProject;
 import org.guvnor.common.services.project.service.ModuleRepositoryResolver;
 import org.guvnor.common.services.project.service.ModuleService;
 import org.guvnor.common.services.project.service.WorkspaceProjectService;
+import org.guvnor.structure.backend.organizationalunit.config.SpaceConfigStorageRegistryImpl;
 import org.guvnor.structure.organizationalunit.OrganizationalUnit;
 import org.guvnor.structure.organizationalunit.OrganizationalUnitService;
+import org.guvnor.structure.organizationalunit.config.SpaceConfigStorage;
+import org.guvnor.structure.organizationalunit.config.SpaceConfigStorageRegistry;
 import org.guvnor.structure.repositories.Branch;
 import org.guvnor.structure.repositories.Repository;
 import org.guvnor.structure.repositories.RepositoryService;
@@ -84,6 +90,12 @@ public class WorkspaceProjectServiceImplResolveWorkspaceWorkspaceProjectTest {
     @Mock
     ModuleRepositoryResolver repositoryResolver;
 
+    @Mock
+    SpaceConfigStorageRegistry spaceConfigStorageRegistry;
+
+    @Mock
+    SpaceConfigStorage spaceConfigStorage;
+
     private Path path;
     private Path branchRoot;
     private Branch masterBranch;
@@ -115,12 +127,17 @@ public class WorkspaceProjectServiceImplResolveWorkspaceWorkspaceProjectTest {
 
         doReturn(moduleService).when(moduleServices).get();
 
+        when(spaceConfigStorageRegistry.get(anyString())).thenReturn(spaceConfigStorage);
+        when(spaceConfigStorageRegistry.getBatch(anyString())).thenReturn(new SpaceConfigStorageRegistryImpl.SpaceStorageBatchImpl(spaceConfigStorage));
+        when(spaceConfigStorageRegistry.exist(anyString())).thenReturn(true);
+
         workspaceProjectService = new WorkspaceProjectServiceImpl(organizationalUnitService,
                                                                   repositoryService,
                                                                   spaces,
                                                                   new EventSourceMock<>(),
                                                                   moduleServices,
-                                                                  repositoryResolver);
+                                                                  repositoryResolver,
+                                                                  spaceConfigStorageRegistry);
     }
 
     @Test
@@ -135,6 +152,13 @@ public class WorkspaceProjectServiceImplResolveWorkspaceWorkspaceProjectTest {
                      workspaceProject.getBranch());
         assertEquals(module,
                      workspaceProject.getMainModule());
+    }
+
+    @Test(expected = RuntimeException.class)
+    public void resolveProjectPathOfInexistentRepository() throws Exception {
+        doReturn(null).when(repositoryService).getRepository(Mockito.eq(space), any(Path.class));
+
+        final WorkspaceProject workspaceProject = workspaceProjectService.resolveProject(space, path);
     }
 
     @Test

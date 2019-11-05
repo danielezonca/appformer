@@ -39,6 +39,7 @@ import static org.kie.soup.commons.validation.PortablePreconditions.checkNotNull
 public class DirectoryFactory implements LuceneIndexFactory {
 
     private static final String REPOSITORIES_ROOT_DIR = ".index";
+    public static final String CLUSTER_ID_SEGMENT_SEPARATOR = "/";
 
     private final Map<KCluster, LuceneIndex> clusters = new ConcurrentHashMap<>();
     private final DirectoryType type;
@@ -46,7 +47,9 @@ public class DirectoryFactory implements LuceneIndexFactory {
 
     public DirectoryFactory(final DirectoryType type,
                             final Analyzer analyzer) {
-        this(type, analyzer, defaultHostingDir());
+        this(type,
+             analyzer,
+             defaultHostingDir());
     }
 
     public DirectoryFactory(final DirectoryType type,
@@ -54,16 +57,29 @@ public class DirectoryFactory implements LuceneIndexFactory {
                             final File hostingDir) {
         this.analyzer = analyzer;
         this.type = type;
-        listFiles(hostingDir).filter(file -> file.isDirectory())
-                             .flatMap(file -> listFiles(file))
-                             .map(file -> new KClusterImpl(clusterIdOf(file)))
-                             .forEach(cluster -> {
-                                 clusters.put(cluster, type.newIndex(cluster, newConfig(analyzer)));
-                             });
+        this.loadIndexes(type,
+                         analyzer,
+                         hostingDir);
     }
 
-    private static String clusterIdOf(File file) {
-        return file.getParentFile().getName() + "/" + file.getName();
+    protected void loadIndexes(DirectoryType type,
+                               Analyzer analyzer,
+                               File hostingDir) {
+        listFiles(hostingDir)
+                .filter(File::isDirectory)
+                .flatMap(file -> listFiles(file))
+                .filter(File::isDirectory)
+                .flatMap(file -> listFiles(file))
+                .map(file -> new KClusterImpl(clusterIdOf(file)))
+                .forEach(cluster -> clusters.put(cluster,
+                                                 type.newIndex(cluster,
+                                                               newConfig(analyzer))));
+    }
+
+    protected static String clusterIdOf(File file) {
+        return file.getParentFile().getParentFile().getName() + CLUSTER_ID_SEGMENT_SEPARATOR +
+                file.getParentFile().getName() + CLUSTER_ID_SEGMENT_SEPARATOR +
+                file.getName();
     }
 
     private Stream<File> listFiles(final File hostingDir) {

@@ -17,15 +17,20 @@ package org.guvnor.common.services.project.backend.server;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.Optional;
 
 import javax.enterprise.inject.Instance;
 
+import org.assertj.core.api.Assertions;
 import org.guvnor.common.services.project.events.NewProjectEvent;
 import org.guvnor.common.services.project.model.GAV;
 import org.guvnor.common.services.project.model.Module;
@@ -35,8 +40,12 @@ import org.guvnor.common.services.project.service.DeploymentMode;
 import org.guvnor.common.services.project.service.ModuleRepositoryResolver;
 import org.guvnor.common.services.project.service.ModuleService;
 import org.guvnor.common.services.project.service.WorkspaceProjectService;
+import org.guvnor.common.services.shared.exceptions.GenericPortableException;
+import org.guvnor.structure.backend.organizationalunit.config.SpaceConfigStorageRegistryImpl;
 import org.guvnor.structure.organizationalunit.OrganizationalUnit;
 import org.guvnor.structure.organizationalunit.OrganizationalUnitService;
+import org.guvnor.structure.organizationalunit.config.SpaceConfigStorage;
+import org.guvnor.structure.organizationalunit.config.SpaceConfigStorageRegistry;
 import org.guvnor.structure.repositories.Branch;
 import org.guvnor.structure.repositories.Repository;
 import org.guvnor.structure.repositories.RepositoryEnvironmentConfigurations;
@@ -48,6 +57,7 @@ import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.uberfire.backend.vfs.Path;
 import org.uberfire.mocks.EventSourceMock;
+import org.uberfire.spaces.Space;
 import org.uberfire.spaces.SpacesAPI;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -65,6 +75,9 @@ public class WorkspaceProjectServiceImplNewWorkspaceWorkspaceProjectTest {
 
     @Mock
     private OrganizationalUnit ou;
+
+    @Mock
+    private Space space;
 
     @Mock
     private Repository repository;
@@ -87,6 +100,12 @@ public class WorkspaceProjectServiceImplNewWorkspaceWorkspaceProjectTest {
     @Mock
     private ModuleRepositoryResolver repositoryResolver;
 
+    @Mock
+    private SpaceConfigStorageRegistry spaceConfigStorageRegistry;
+
+    @Mock
+    private SpaceConfigStorage spaceConfigStorage;
+
     private POM pom;
 
     @Before
@@ -97,7 +116,7 @@ public class WorkspaceProjectServiceImplNewWorkspaceWorkspaceProjectTest {
 
         doReturn(repository).when(repositoryService).createRepository(eq(ou),
                                                                       eq("git"),
-                                                                      eq("my project"),
+                                                                      eq("myproject"),
                                                                       any(RepositoryEnvironmentConfigurations.class));
 
         pom = new POM("my project",
@@ -107,14 +126,28 @@ public class WorkspaceProjectServiceImplNewWorkspaceWorkspaceProjectTest {
                               "artifactId",
                               "version"));
 
+        when(ou.getSpace()).thenReturn(space);
+        when(space.getName()).thenReturn("ou");
+
+        when(repositoryService.createRepository(any(),
+                                           anyString(),
+                                           anyString(),
+                                           any(),
+                                           any())).thenReturn(repository);
+
         doReturn(moduleService).when(moduleServices).get();
+
+        when(spaceConfigStorageRegistry.get(anyString())).thenReturn(spaceConfigStorage);
+        when(spaceConfigStorageRegistry.getBatch(anyString())).thenReturn(new SpaceConfigStorageRegistryImpl.SpaceStorageBatchImpl(spaceConfigStorage));
+        when(spaceConfigStorageRegistry.exist(anyString())).thenReturn(true);
 
         workspaceProjectService = new WorkspaceProjectServiceImpl(mock(OrganizationalUnitService.class),
                                                                   repositoryService,
                                                                   spaces,
                                                                   newProjectEvent,
                                                                   moduleServices,
-                                                                  repositoryResolver);
+                                                                  repositoryResolver,
+                                                                  spaceConfigStorageRegistry);
     }
 
     @Test
@@ -128,6 +161,14 @@ public class WorkspaceProjectServiceImplNewWorkspaceWorkspaceProjectTest {
                                                                                      pom);
         assertProject(workspaceProject);
         verify(newProjectEvent).fire(any());
+
+        verify(spaceConfigStorage).startBatch();
+        verify(repositoryService).createRepository(eq(ou),
+                                                   eq("git"),
+                                                   eq("myproject"),
+                                                   any(),
+                                                   any());
+        verify(spaceConfigStorage).endBatch();
     }
 
     @Test
@@ -142,6 +183,40 @@ public class WorkspaceProjectServiceImplNewWorkspaceWorkspaceProjectTest {
                                                                                      DeploymentMode.VALIDATED);
         assertProject(workspaceProject);
         verify(newProjectEvent).fire(any());
+
+        verify(spaceConfigStorage).startBatch();
+        verify(repositoryService).createRepository(eq(ou),
+                                                   eq("git"),
+                                                   eq("myproject"),
+                                                   any(),
+                                                   any());
+        verify(spaceConfigStorage).endBatch();
+    }
+
+    @Test
+    public void testNewProjectErrorRepositoryWithoutDefaultBranch() {
+        when(repository.getDefaultBranch()).thenReturn(Optional.empty());
+
+        testNewProjectError(GenericPortableException.class, "New repository should always have a branch.");
+    }
+
+
+    @Test
+    public void testNewProjectErrorCreatingModule() {
+        final String errorMessage = "Impossible to create module";
+
+        doThrow(new IllegalStateException(errorMessage)).when(moduleService).newModule(any(), any(), any());
+
+        testNewProjectError(GenericPortableException.class, errorMessage);
+    }
+
+    private void testNewProjectError(final Class<? extends Exception> expectedExceptionType, final String expectedMessage) {
+        Assertions.assertThatThrownBy(() -> workspaceProjectService.newProject(ou, pom))
+                .isInstanceOf(expectedExceptionType)
+                .hasMessage(expectedMessage);
+
+        verify(repositoryService).removeRepository(any(), anyString());
+        verify(newProjectEvent, never()).fire(any());
     }
 
     @Test
@@ -155,6 +230,14 @@ public class WorkspaceProjectServiceImplNewWorkspaceWorkspaceProjectTest {
                                                                                      DeploymentMode.FORCED);
         assertProject(workspaceProject);
         verify(newProjectEvent).fire(any());
+
+        verify(spaceConfigStorage).startBatch();
+        verify(repositoryService).createRepository(eq(ou),
+                                           eq("git"),
+                                           eq("myproject"),
+                                           any(),
+                                           any());
+        verify(spaceConfigStorage).endBatch();
     }
 
     private void assertProject(final WorkspaceProject workspaceProject) {

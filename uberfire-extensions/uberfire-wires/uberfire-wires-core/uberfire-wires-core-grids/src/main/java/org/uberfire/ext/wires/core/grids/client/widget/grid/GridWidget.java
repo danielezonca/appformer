@@ -18,7 +18,6 @@ package org.uberfire.ext.wires.core.grids.client.widget.grid;
 import com.ait.lienzo.client.core.event.INodeXYEvent;
 import com.ait.lienzo.client.core.event.NodeMouseClickHandler;
 import com.ait.lienzo.client.core.shape.Group;
-import com.ait.lienzo.client.core.shape.GroupOf;
 import com.ait.lienzo.client.core.shape.IPrimitive;
 import com.ait.lienzo.client.core.types.Point2D;
 import org.uberfire.ext.wires.core.grids.client.model.GridData;
@@ -100,6 +99,32 @@ public interface GridWidget extends IPrimitive<Group>,
     boolean isSelected();
 
     /**
+     * Show context menu of a header cell at coordinates 'uiHeaderRowIndex' and 'uiHeaderColumnIndex'.
+     * If the provided coordinate does not resolve to a header cell in the Grid no operation is performed.
+     * @param uiHeaderRowIndex Header row index of cell to invoke context menu
+     * @param uiHeaderColumnIndex Header column index of cell to invoke context menu
+     * @return true if menu was shown.
+     */
+    boolean showContextMenuForHeader(final int uiHeaderRowIndex,
+                                     final int uiHeaderColumnIndex);
+
+    /**
+     * Show context menu of a cell at coordinates 'uiRowIndex' and 'uiColumnIndex'.
+     * If the provided coordinate does not resolve to a cell in the Grid no operation is performed.
+     * @param uiRowIndex Row index of cell to invoke context menu
+     * @param uiColumnIndex Column index of cell to invoke context menu
+     * @return true if menu was shown.
+     */
+    boolean showContextMenuForCell(final int uiRowIndex,
+                                   final int uiColumnIndex);
+
+    /**
+     * Returns the {@link CellSelectionManager} associated with the {@link GridWidget}
+     * @return
+     */
+    CellSelectionManager getCellSelectionManager();
+
+    /**
      * Checks whether a cell-relative coordinate is "on" the hot-spot to toggle the collapsed/expanded state.
      * @param cellX The MouseEvent relative to the cell's x-coordinate.
      * @param cellY The MouseEvent relative to the cell's y-coordinate.
@@ -123,20 +148,4 @@ public interface GridWidget extends IPrimitive<Group>,
     default boolean onDragHandle(final INodeXYEvent event) {
         return false;
     }
-
-    /**
-     * Returns the Grid's absolute X coordinate relative to the Layer on which it is placed.
-     * The absolute coordinate only differs to the relative {@link IPrimitive#getX()} method
-     * return value when a Grid is nested inside a {@link GroupOf}.
-     * @return The absolute X coordinate of the Grid.
-     */
-    double getAbsoluteX();
-
-    /**
-     * Returns the Grid's absolute Y coordinate relative to the Layer on which it is placed.
-     * The absolute coordinate only differs to the relative {@link IPrimitive#getY()} method
-     * return value when a Grid is nested inside a {@link GroupOf}.
-     * @return The absolute Y coordinate of the Grid.
-     */
-    double getAbsoluteY();
 }

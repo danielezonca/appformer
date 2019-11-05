@@ -23,6 +23,7 @@ import com.google.gwt.event.dom.client.KeyDownEvent;
 import com.google.gwt.event.dom.client.KeyDownHandler;
 import org.uberfire.ext.wires.core.grids.client.model.GridColumn;
 import org.uberfire.ext.wires.core.grids.client.model.GridData;
+import org.uberfire.ext.wires.core.grids.client.widget.dom.HasDOMElementResources;
 import org.uberfire.ext.wires.core.grids.client.widget.dom.single.HasSingletonDOMElementResource;
 import org.uberfire.ext.wires.core.grids.client.widget.grid.GridWidget;
 import org.uberfire.ext.wires.core.grids.client.widget.grid.impl.KeyboardOperation.TriStateBoolean;
@@ -68,14 +69,18 @@ public class BaseGridWidgetKeyboardHandler implements KeyDownHandler {
             return;
         }
 
+        if (!operation.isExecutable(selectedGridWidget)) {
+            return;
+        }
+
+        flushDOMElements(selectedGridWidget);
+
         final boolean redraw = operation.perform(selectedGridWidget,
                                                  event.isShiftKeyDown(),
                                                  event.isControlKeyDown());
 
         event.preventDefault();
         event.stopPropagation();
-
-        flushDOMElements(selectedGridWidget);
 
         if (redraw) {
             gridLayer.draw();
@@ -114,7 +119,9 @@ public class BaseGridWidgetKeyboardHandler implements KeyDownHandler {
         for (GridColumn<?> column : gridModel.getColumns()) {
             if (column instanceof HasSingletonDOMElementResource) {
                 ((HasSingletonDOMElementResource) column).flush();
-                ((HasSingletonDOMElementResource) column).destroyResources();
+            }
+            if (column instanceof HasDOMElementResources) {
+                ((HasDOMElementResources) column).destroyResources();
             }
         }
     }

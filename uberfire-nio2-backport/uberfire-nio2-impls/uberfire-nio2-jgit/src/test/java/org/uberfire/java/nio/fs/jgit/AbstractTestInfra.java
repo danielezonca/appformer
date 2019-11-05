@@ -40,6 +40,7 @@ import org.apache.commons.io.IOUtils;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.util.FS_POSIX;
 import org.eclipse.jgit.util.FileUtils;
@@ -51,10 +52,13 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.uberfire.commons.cluster.ClusterParameters;
+import org.uberfire.commons.cluster.ConnectionMode;
 import org.uberfire.java.nio.file.FileSystem;
 import org.uberfire.java.nio.file.Path;
 import org.uberfire.java.nio.fs.jgit.util.Git;
 import org.uberfire.java.nio.fs.jgit.util.commands.Commit;
+import org.uberfire.java.nio.fs.jgit.util.commands.ListRefs;
 import org.uberfire.java.nio.fs.jgit.util.model.CommitInfo;
 import org.uberfire.java.nio.fs.jgit.util.model.DefaultCommitContent;
 
@@ -68,7 +72,8 @@ public abstract class AbstractTestInfra {
         final String path;
         final String content;
 
-        TestFile(final String path, final String content) {
+        TestFile(final String path,
+                 final String content) {
             this.path = path;
             this.content = content;
         }
@@ -78,7 +83,7 @@ public abstract class AbstractTestInfra {
 
     protected static final Map<String, Object> EMPTY_ENV = Collections.emptyMap();
 
-    private static final List<File> tempFiles = new ArrayList<>();
+    protected static final List<File> tempFiles = new ArrayList<>();
 
     protected JGitFileSystemProvider provider;
 
@@ -92,6 +97,8 @@ public abstract class AbstractTestInfra {
      * override this method and provide own map of preferences.
      */
     public Map<String, String> getGitPreferences() {
+        System.setProperty(ClusterParameters.APPFORMER_JMS_CONNECTION_MODE,
+                           ConnectionMode.NONE.toString());
         Map<String, String> gitPrefs = new HashMap<>();
         // disable the daemons by default as they not needed in most of the cases
         gitPrefs.put("org.uberfire.nio.git.daemon.enabled",
@@ -227,9 +234,13 @@ public abstract class AbstractTestInfra {
         return writer.toString().getBytes();
     }
 
-    static void commit(final Git origin, final String branchName, final String message, final TestFile... testFiles) throws IOException {
+    static void commit(final Git origin,
+                       final String branchName,
+                       final String message,
+                       final TestFile... testFiles) throws IOException {
         final Map<String, File> data = Arrays.stream(testFiles)
-                .collect(toMap(f -> f.path, f -> tmpFile(f.content)));
+                .collect(toMap(f -> f.path,
+                               f -> tmpFile(f.content)));
         new Commit(origin,
                    branchName,
                    "name",
@@ -249,8 +260,10 @@ public abstract class AbstractTestInfra {
         }
     }
 
-    static TestFile content(final String path, final String content) {
-        return new TestFile(path, content);
+    static TestFile content(final String path,
+                            final String content) {
+        return new TestFile(path,
+                            content);
     }
 
     /**
@@ -295,7 +308,7 @@ public abstract class AbstractTestInfra {
                 if (hookName.equals(testedHookName)) {
                     hookExecuted.set(true);
                 }
-                return null;
+                return new ProcessResult(ProcessResult.Status.OK);
             }
         });
 
@@ -321,5 +334,25 @@ public abstract class AbstractTestInfra {
         } else {
             assertThat(hookExecuted.get()).isFalse();
         }
+    }
+
+    protected Ref branch(Git origin, String source, String target) throws Exception {
+        final Repository repo = origin.getRepository();
+        return org.eclipse.jgit.api.Git.wrap(repo)
+                .branchCreate()
+                .setName(target)
+                .setStartPoint(source)
+                .call();
+    }
+
+    protected List<Ref> listRefs(final Git cloned) {
+        return new ListRefs(cloned.getRepository()).execute();
+    }
+
+    protected static String multiline(String prefix, String... lines) {
+        return Arrays.stream(lines)
+                .map(s -> prefix + s)
+                .reduce((s1, s2) -> s1 + "\n" + s2)
+                .orElse("");
     }
 }

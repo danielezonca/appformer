@@ -10,12 +10,26 @@ public interface SpacesAPI {
     String DEFAULT_SPACE_NAME = "system";
     Space DEFAULT_SPACE = new Space(DEFAULT_SPACE_NAME);
 
+    String DASHBUILDER_SPACE_NAME = "dashbuilder";
+    Space DASHBUILDER_SPACE = new Space(DASHBUILDER_SPACE_NAME);
 
-    static String resolveFileSystemPath(Scheme scheme,
-                                        Space space,
-                                        String fsName) {
-        String uri = scheme + "://" + space.getName() + "/" + fsName;
-        return uri;
+    String CONFIG_FOLDER_NAME = ".config";
+    String CONFIG_REPOSITORY_NAME = "config";
+
+    static String resolveSpacePath(final Scheme scheme,
+                                   final String spaceName) {
+        return scheme + "://" + spaceName + "/";
+    }
+
+    static String resolveFileSystemPath(final Scheme scheme,
+                                        final Space space,
+                                        final String fsName) {
+        return scheme + "://" + space.getName() + "/" + fsName;
+    }
+
+    static String resolveConfigFileSystemPath(final Scheme scheme,
+                                              final String spaceName) {
+        return resolveSpacePath(scheme, spaceName) + CONFIG_FOLDER_NAME + "/" + CONFIG_REPOSITORY_NAME;
     }
 
     @GwtIncompatible

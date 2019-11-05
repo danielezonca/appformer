@@ -17,7 +17,10 @@
 package org.uberfire.ext.editor.commons.client;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import com.google.gwt.user.client.ui.IsWidget;
@@ -30,20 +33,24 @@ import org.mockito.Mock;
 import org.uberfire.backend.vfs.ObservablePath;
 import org.uberfire.backend.vfs.Path;
 import org.uberfire.client.callbacks.Callback;
+import org.uberfire.client.promise.Promises;
 import org.uberfire.client.workbench.events.ChangeTitleWidgetEvent;
 import org.uberfire.client.workbench.type.ClientResourceType;
 import org.uberfire.ext.editor.commons.client.history.VersionRecordManager;
 import org.uberfire.ext.editor.commons.client.menu.BasicFileMenuBuilder;
-import org.uberfire.ext.editor.commons.client.menu.DownloadMenuItem;
+import org.uberfire.ext.editor.commons.client.menu.DownloadMenuItemBuilder;
 import org.uberfire.ext.editor.commons.client.menu.common.SaveAndRenameCommandBuilder;
 import org.uberfire.ext.editor.commons.client.validation.Validator;
 import org.uberfire.ext.editor.commons.file.DefaultMetadata;
+import org.uberfire.ext.widgets.common.client.common.ConcurrentChangePopup;
 import org.uberfire.java.nio.base.version.VersionRecord;
 import org.uberfire.mocks.EventSourceMock;
 import org.uberfire.mvp.Command;
 import org.uberfire.mvp.ParameterizedCommand;
 import org.uberfire.mvp.PlaceRequest;
+import org.uberfire.promise.SyncPromises;
 import org.uberfire.workbench.model.menu.MenuItem;
+import org.uberfire.workbench.model.menu.Menus;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -51,11 +58,13 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.uberfire.ext.editor.commons.client.menu.MenuItems.COPY;
@@ -84,16 +93,17 @@ public class BaseEditorTest {
     private EventSourceMock<ChangeTitleWidgetEvent> changeTitleNotification;
 
     @Mock
-    private DownloadMenuItem downloadMenuItem;
+    private DownloadMenuItemBuilder downloadMenuItem;
 
     private SaveAndRenameCommandBuilder<String, DefaultMetadata> builder = spy(makeBuilder());
+
+    private Promises promises;
 
     @InjectMocks
     private BaseEditor<String, DefaultMetadata> editor = spy(makeBaseEditor());
 
     @Test
     public void testSaveAndRename() {
-
         final Supplier pathSupplier = mock(Supplier.class);
         final Validator renameValidator = mock(Validator.class);
         final Supplier saveValidator = mock(Supplier.class);
@@ -103,6 +113,8 @@ public class BaseEditorTest {
         final Supplier isDirtySupplier = mock(Supplier.class);
         final ParameterizedCommand parameterizedCommand = mock(ParameterizedCommand.class);
         final Command command = mock(Command.class);
+        final Command beforeSaveCommand = mock(Command.class);
+
 
         doReturn(pathSupplier).when(editor).getPathSupplier();
         doReturn(renameValidator).when(editor).getRenameValidator();
@@ -112,6 +124,7 @@ public class BaseEditorTest {
         doReturn(contentSupplier).when(editor).getContentSupplier();
         doReturn(isDirtySupplier).when(editor).isDirtySupplier();
         doReturn(parameterizedCommand).when(editor).onSuccess();
+        doReturn(beforeSaveCommand).when(editor).getBeforeSaveAndRenameCommand();
         doReturn(command).when(builder).build();
 
         final Command saveAndRenameCommand = editor.getSaveAndRename();
@@ -126,6 +139,7 @@ public class BaseEditorTest {
         verify(builder).addContentSupplier(contentSupplier);
         verify(builder).addIsDirtySupplier(isDirtySupplier);
         verify(builder).addSuccessCallback(parameterizedCommand);
+        verify(builder).addBeforeSaveAndRenameCommand(beforeSaveCommand);
     }
 
     @Test
@@ -270,7 +284,7 @@ public class BaseEditorTest {
 
         final boolean success = editor.getSaveValidator().get();
 
-        verify(versionRecordManager).restoreToCurrentVersion();
+        verify(versionRecordManager).restoreToCurrentVersion(true);
         assertFalse(success);
     }
 
@@ -540,6 +554,56 @@ public class BaseEditorTest {
         assertEquals(expectedHash, actualHash);
     }
 
+    @Test
+    public void testDisableMenuItem() {
+
+        final Menus menus = mock(Menus.class);
+        final MenuItem menuItem = mock(MenuItem.class);
+        final Map<Object, MenuItem> itemMap = new HashMap<>();
+
+        itemMap.put(SAVE, menuItem);
+        when(menus.getItemsMap()).thenReturn(itemMap);
+        doAnswer(invocationOnMock -> {
+            invocationOnMock.getArgumentAt(0, Consumer.class).accept(menus);
+            return null;
+        }).when(editor).getMenus(any());
+
+        editor.disableMenuItem(SAVE);
+
+        verify(menuItem).setEnabled(false);
+    }
+
+    @Test
+    public void testEnableMenuItem() {
+
+        final Menus menus = mock(Menus.class);
+        final MenuItem menuItem = mock(MenuItem.class);
+        final Map<Object, MenuItem> itemMap = new HashMap<>();
+
+        itemMap.put(SAVE, menuItem);
+        when(menus.getItemsMap()).thenReturn(itemMap);
+        doAnswer(invocationOnMock -> {
+            invocationOnMock.getArgumentAt(0, Consumer.class).accept(menus);
+            return null;
+        }).when(editor).getMenus(any());
+
+        editor.enableMenuItem(SAVE);
+
+        verify(menuItem).setEnabled(true);
+    }
+
+    @Test
+    public void testShowConcurrentUpdatePopupTwice() {
+        final ConcurrentChangePopup concurrentChangePopup = mock(ConcurrentChangePopup.class);
+        doReturn(concurrentChangePopup).when(editor).getConcurrentUpdatePopup();
+
+        editor.showConcurrentUpdatePopup();
+        editor.showConcurrentUpdatePopup();
+
+        verify(editor, times(1)).getConcurrentUpdatePopup();
+        verify(concurrentChangePopup, times(2)).show();
+    }
+
     private DefaultMetadata fakeMetadata(final int hashCode) {
         return new DefaultMetadata() {
             @Override
@@ -554,7 +618,11 @@ public class BaseEditorTest {
     }
 
     private BaseEditor<String, DefaultMetadata> makeBaseEditor() {
+        promises = new SyncPromises();
         return new BaseEditor<String, DefaultMetadata>() {
+            {
+                promises = BaseEditorTest.this.promises;
+            }
 
             @Override
             protected SaveAndRenameCommandBuilder<String, DefaultMetadata> getSaveAndRenameCommandBuilder() {

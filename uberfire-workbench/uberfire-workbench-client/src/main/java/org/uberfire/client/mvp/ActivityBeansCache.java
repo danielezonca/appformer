@@ -37,13 +37,12 @@ import org.jboss.errai.ioc.client.api.EnabledByProperty;
 import org.jboss.errai.ioc.client.container.SyncBeanDef;
 import org.jboss.errai.ioc.client.container.SyncBeanManager;
 import org.uberfire.backend.vfs.Path;
+import org.uberfire.client.util.GWTEditorNativeRegister;
 import org.uberfire.client.workbench.annotations.AssociatedResources;
 import org.uberfire.client.workbench.events.NewPerspectiveEvent;
 import org.uberfire.client.workbench.events.NewWorkbenchScreenEvent;
 import org.uberfire.commons.data.Pair;
 import org.uberfire.experimental.service.auth.ExperimentalActivitiesAuthorizationManager;
-
-import static java.util.Collections.sort;
 
 /**
  *
@@ -69,6 +68,7 @@ public class ActivityBeansCache {
     private Event<NewWorkbenchScreenEvent> newWorkbenchScreenEventEvent;
     protected ResourceTypeManagerCache resourceTypeManagerCache;
     private ExperimentalActivitiesAuthorizationManager experimentalActivitiesAuthorizationManager;
+    private GWTEditorNativeRegister gwtEditorNativeRegister;
 
     public ActivityBeansCache() {
     }
@@ -78,16 +78,19 @@ public class ActivityBeansCache {
                               Event<NewPerspectiveEvent> newPerspectiveEventEvent,
                               Event<NewWorkbenchScreenEvent> newWorkbenchScreenEventEvent,
                               ResourceTypeManagerCache resourceTypeManagerCache,
-                              ExperimentalActivitiesAuthorizationManager experimentalActivitiesAuthorizationManager) {
+                              ExperimentalActivitiesAuthorizationManager experimentalActivitiesAuthorizationManager,
+                              GWTEditorNativeRegister gwtEditorNativeRegister) {
         this.iocManager = iocManager;
         this.newPerspectiveEventEvent = newPerspectiveEventEvent;
         this.newWorkbenchScreenEventEvent = newWorkbenchScreenEventEvent;
         this.resourceTypeManagerCache = resourceTypeManagerCache;
         this.experimentalActivitiesAuthorizationManager = experimentalActivitiesAuthorizationManager;
+        this.gwtEditorNativeRegister = gwtEditorNativeRegister;
     }
 
     @PostConstruct
     void init() {
+        registerGwtEditorProvider();
 
         final Collection<SyncBeanDef<Activity>> availableActivities = getAvailableActivities();
 
@@ -97,12 +100,14 @@ public class ActivityBeansCache {
 
             validateUniqueness(id);
 
-            activitiesById.put(id,
-                               activityBean);
+            activitiesById.put(id, activityBean);
 
             if (isSplashScreen(activityBean.getQualifiers())) {
                 splashActivities.add((SplashScreenActivity) activityBean.getInstance());
             } else {
+                if (isClientEditor(activityBean.getQualifiers())) {
+                    registerGwtClientBean(id, activityBean);
+                }
                 final Pair<Integer, List<String>> metaInfo = generateActivityMetaInfo(activityBean);
                 if (metaInfo != null) {
                     addResourceActivity(activityBean,
@@ -112,6 +117,21 @@ public class ActivityBeansCache {
         }
 
         this.resourceTypeManagerCache.sortResourceActivitiesByPriority();
+    }
+
+    private void put(final SyncBeanDef<Activity> activityBean,
+                     final String id) {
+
+        activitiesById.put(id,
+                           activityBean);
+    }
+
+    void registerGwtEditorProvider() {
+        gwtEditorNativeRegister.nativeRegisterGwtEditorProvider();
+    }
+
+    void registerGwtClientBean(final String id, final SyncBeanDef<Activity> activityBean) {
+        gwtEditorNativeRegister.nativeRegisterGwtClientBean(id, activityBean);
     }
 
     private void addResourceActivity(SyncBeanDef<Activity> activityBean,
@@ -136,6 +156,15 @@ public class ActivityBeansCache {
     private boolean isSplashScreen(final Set<Annotation> qualifiers) {
         for (final Annotation qualifier : qualifiers) {
             if (qualifier instanceof IsSplashScreen) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isClientEditor(final Set<Annotation> qualifiers) {
+        for (final Annotation qualifier : qualifiers) {
+            if (qualifier instanceof IsClientEditor) {
                 return true;
             }
         }
@@ -198,6 +227,18 @@ public class ActivityBeansCache {
         this.resourceTypeManagerCache.sortResourceActivitiesByPriority();
     }
 
+    public void addNewEditorActivity(final SyncBeanDef<Activity> syncBeanDef,
+                                     final int priority,
+                                     final List<String> resourceTypes) {
+
+        validateUniqueness(syncBeanDef.getName());
+        put(syncBeanDef, syncBeanDef.getName());
+
+        ActivityAndMetaInfo metaInfo = new ActivityAndMetaInfo(iocManager, syncBeanDef, priority, resourceTypes);
+        this.resourceTypeManagerCache.addResourceActivity(metaInfo);
+        this.resourceTypeManagerCache.sortResourceActivitiesByPriority();
+    }
+
     public void addNewSplashScreenActivity(final SyncBeanDef<Activity> activityBean) {
         final String id = activityBean.getName();
 
@@ -226,6 +267,9 @@ public class ActivityBeansCache {
      * was registered under.
      */
     public SyncBeanDef<Activity> getActivity(final String id) {
+        if (id == null) {
+            return null;
+        }
         return activitiesById.get(id);
     }
 
@@ -241,7 +285,7 @@ public class ActivityBeansCache {
                 .filter(activityAndMetaInfo -> activitySupportsPath(activityAndMetaInfo, path))
                 .findAny();
 
-        if(optional.isPresent()) {
+        if (optional.isPresent()) {
             return optional.get().getActivityBean();
         }
 
@@ -251,7 +295,7 @@ public class ActivityBeansCache {
     private boolean activitySupportsPath(ActivityAndMetaInfo activity, Path path) {
 
         // Check if the editor activity is experimental && enabled
-        if(experimentalActivitiesAuthorizationManager.authorizeActivityClass(activity.getActivityBean().getBeanClass())) {
+        if (experimentalActivitiesAuthorizationManager.authorizeActivityClass(activity.getActivityBean().getBeanClass())) {
 
             // Check if the editor resources types support the given path
             return Stream.of(activity.getResourceTypes())
@@ -277,6 +321,10 @@ public class ActivityBeansCache {
 
     public List<String> getActivitiesById() {
         return new ArrayList<String>(activitiesById.keySet());
+    }
+
+    public void noOp() {
+        // intentionally left empty, can be called to activate this bean in a CDI context
     }
 
     public class EditorResourceTypeNotFound extends RuntimeException {

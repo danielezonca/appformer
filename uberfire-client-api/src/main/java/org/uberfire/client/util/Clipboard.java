@@ -26,15 +26,15 @@ public class Clipboard {
 
     public boolean copy(final HTMLInputElement element) {
         element.select();
-        return copyNative();
+        return copy();
     }
 
     public boolean copy(final HTMLTextAreaElement element) {
         element.select();
-        return copyNative();
+        return copy();
     }
 
-    private native boolean copyNative() /*-{
+    public native boolean copy() /*-{
         return $doc.execCommand("Copy");
     }-*/;
 }

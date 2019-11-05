@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
+import org.guvnor.structure.contributors.Contributor;
 import org.guvnor.structure.organizationalunit.OrganizationalUnit;
 import org.jboss.errai.bus.server.annotations.Remote;
 import org.uberfire.backend.vfs.Path;
@@ -36,7 +37,8 @@ import org.uberfire.spaces.Space;
  */
 public interface RepositoryService {
 
-    RepositoryInfo getRepositoryInfo(final Space space, final String alias);
+    RepositoryInfo getRepositoryInfo(final Space space,
+                                     final String alias);
 
     List<VersionRecord> getRepositoryHistory(final Space space,
                                              final String alias,
@@ -47,19 +49,32 @@ public interface RepositoryService {
                                              final int startIndex,
                                              final int endIndex);
 
-    List<VersionRecord> getRepositoryHistoryAll(final Space space, final String alias);
+    List<VersionRecord> getRepositoryHistoryAll(final Space space,
+                                                final String alias);
 
     Repository getRepositoryFromSpace(final Space currentSpace,
                                       final String alias);
 
     Repository getRepository(final Path root);
 
-    Repository getRepository(final Space space, final Path root);
+    Repository getRepository(final Space space,
+                             final Path root);
 
     /**
      * Get all the repositories. Security checks are omitted.
      */
     Collection<Repository> getAllRepositories(final Space space);
+
+    /**
+     * Get all the repositories. Security checks are omitted.
+     */
+    Collection<Repository> getAllRepositories(final Space space,
+                                              final boolean includeDeleted);
+
+    /**
+     * Get all the repositories. Security checks are omitted.
+     */
+    Collection<Repository> getAllDeletedRepositories(final Space space);
 
     /**
      * Get all the repositories from all user spaces. Security checks are omitted.
@@ -76,6 +91,12 @@ public interface RepositoryService {
                                 final String alias,
                                 final RepositoryEnvironmentConfigurations configurations) throws RepositoryAlreadyExistsException;
 
+    Repository createRepository(final OrganizationalUnit organizationalUnit,
+                                final String scheme,
+                                final String alias,
+                                final RepositoryEnvironmentConfigurations configurations,
+                                final Collection<Contributor> contributors) throws RepositoryAlreadyExistsException;
+
     String normalizeRepositoryName(final String name);
 
     boolean validateRepositoryName(final String name);
@@ -86,11 +107,16 @@ public interface RepositoryService {
     void removeGroup(final Repository repository,
                      final String group);
 
-    void removeRepository(final Space space, final String alias);
+    void updateContributors(Repository repository,
+                            List<Contributor> contributors);
+
+    void removeRepository(final Space space,
+                          final String alias);
 
     /**
      * Unlike {@link #removeRepository(Space, String)}, this method does not fire CDI events, since it is meant to be invoked
      * by other services while removing other constructs (such as an entire space).
      */
-    void removeRepositories(final Space space, final Set<String> aliases);
+    void removeRepositories(final Space space,
+                            final Set<String> aliases);
 }

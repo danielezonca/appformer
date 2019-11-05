@@ -17,6 +17,7 @@
 
   <properties>
     <version.org.uberfire>${project.version}</version.org.uberfire>
+    <version.org.kie>${version.org.kie}</version.org.kie>
 
     <version.de.benediktmeurer.gwt-slf4j>${version.de.benediktmeurer.gwt-slf4j}</version.de.benediktmeurer.gwt-slf4j>
     <version.ch.qos.logback>${version.ch.qos.logback}</version.ch.qos.logback>
@@ -52,7 +53,7 @@
     <version.com.google.guava>${version.com.google.guava}</version.com.google.guava>
     <version.com.sun.xml.bind>${version.com.sun.xml.bind}</version.com.sun.xml.bind>
 
-    <version.org.hibernate.javax.persistence.hibernate-jpa-2_1-api>${version.org.hibernate.javax.persistence.hibernate-jpa-2.1-api}</version.org.hibernate.javax.persistence.hibernate-jpa-2_1-api>
+    <version.javax.persistence>${version.javax.persistence}</version.javax.persistence>
     <version.org.jasypt>${version.org.jasypt.jasypt}</version.org.jasypt>
     <version.org.javassist>${version.org.javassist}</version.org.javassist>
     <version.org.scannotation>${version.org.scannotation}</version.org.scannotation>
@@ -72,7 +73,7 @@
     <version.org.jboss.spec.javax.servlet.jsp.jboss-jsp-api_2.3_spec>${version.org.jboss.spec.javax.servlet.jsp.jboss-jsp-api_2.3_spec}</version.org.jboss.spec.javax.servlet.jsp.jboss-jsp-api_2.3_spec>
     <version.org.jboss.spec.javax.annotation.jboss-annotations-api_1_2_spec>${version.org.jboss.spec.javax.annotation.jboss-annotations-api_1.2_spec}</version.org.jboss.spec.javax.annotation.jboss-annotations-api_1_2_spec>
     <version.org.jboss.spec.javax_ejb_3_2_spec>${version.org.jboss.spec.javax.ejb.jboss-ejb-api_3.2_spec}</version.org.jboss.spec.javax_ejb_3_2_spec>
-    <version.org.jboss.spec.javax.ws.rs.jboss-jaxrs-api_2_0_spec>${version.org.jboss.spec.javax.ws.rs.jboss-jaxrs-api_2.0_spec}</version.org.jboss.spec.javax.ws.rs.jboss-jaxrs-api_2_0_spec>
+    <version.org.jboss.spec.javax.ws.rs.jboss-jaxrs-api_2_1_spec>${version.org.jboss.spec.javax.ws.rs.jboss-jaxrs-api_2.1_spec}</version.org.jboss.spec.javax.ws.rs.jboss-jaxrs-api_2_1_spec>
 
     <version.org.webjars.bower.org.patternfly>${version.org.webjars.bower.org.patternfly}</version.org.webjars.bower.org.patternfly>
     <version.org.webjars.bower.google-code-prettify>${version.org.webjars.bower.google-code-prettify}</version.org.webjars.bower.google-code-prettify>
@@ -100,7 +101,7 @@
         <groupId>org.uberfire</groupId>
         <artifactId>uberfire-bom</artifactId>
         <type>pom</type>
-        <version>\${version.org.uberfire}</version>
+        <version>\${version.org.kie}</version>
         <scope>import</scope>
       </dependency>
 
@@ -578,8 +579,8 @@
 
       <dependency>
         <groupId>org.jboss.spec.javax.ws.rs</groupId>
-        <artifactId>jboss-jaxrs-api_2.0_spec</artifactId>
-        <version>\${version.org.jboss.spec.javax.ws.rs.jboss-jaxrs-api_2_0_spec}</version>
+        <artifactId>jboss-jaxrs-api_2.1_spec</artifactId>
+        <version>\${version.org.jboss.spec.javax.ws.rs.jboss-jaxrs-api_2_1_spec}</version>
       </dependency>
 
       <dependency>
@@ -691,9 +692,9 @@
       </dependency>
 
       <dependency><!-- JPA 2 implementation agnostic jar -->
-        <groupId>org.hibernate.javax.persistence</groupId>
-        <artifactId>hibernate-jpa-2.1-api</artifactId>
-        <version>\${version.org.hibernate.javax.persistence.hibernate-jpa-2_1-api}</version>
+        <groupId>javax.persistence</groupId>
+        <artifactId>javax.persistence-api</artifactId>
+        <version>\${version.javax.persistence}</version>
       </dependency>
 
       <dependency>

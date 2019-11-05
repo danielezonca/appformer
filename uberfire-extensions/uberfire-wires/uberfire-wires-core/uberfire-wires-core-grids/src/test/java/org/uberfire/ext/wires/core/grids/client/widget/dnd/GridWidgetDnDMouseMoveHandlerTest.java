@@ -26,6 +26,7 @@ import com.ait.lienzo.client.core.event.INodeXYEvent;
 import com.ait.lienzo.client.core.event.NodeMouseMoveEvent;
 import com.ait.lienzo.client.core.mediator.Mediators;
 import com.ait.lienzo.client.core.shape.Viewport;
+import com.ait.lienzo.client.core.types.Point2D;
 import com.ait.lienzo.test.LienzoMockitoTestRunner;
 import com.google.gwt.dom.client.DivElement;
 import com.google.gwt.dom.client.Style;
@@ -147,8 +148,9 @@ public class GridWidgetDnDMouseMoveHandlerTest {
         when(gridWidget.getRendererHelper()).thenReturn(helper);
         when(gridWidget.getWidth()).thenReturn(150.0);
         when(gridWidget.getHeight()).thenReturn(124.0);
-        when(gridWidget.getAbsoluteX()).thenReturn(100.0);
-        when(gridWidget.getAbsoluteY()).thenReturn(100.0);
+
+        final Point2D computedLocation = new Point2D(100.0, 100.0);
+        when(gridWidget.getComputedLocation()).thenReturn(computedLocation);
 
         final BaseGridRendererHelper.RenderingInformation ri = new BaseGridRendererHelper.RenderingInformation(mock(Bounds.class),
                                                                                                                uiModel.getColumns(),
@@ -492,16 +494,28 @@ public class GridWidgetDnDMouseMoveHandlerTest {
         proposedNewWidth = 300;
         assertEquals(proposedNewWidth, handler.adjustColumnWidth(proposedNewWidth, column, gridWidget), 0.1);
 
-        proposedNewWidth = 100;
-        column.setColumnWidthMode(GridColumn.ColumnWidthMode.AUTO);
-        assertEquals(originalColumnWidth, handler.adjustColumnWidth(proposedNewWidth, column, gridWidget), 0.1);
+        proposedNewWidth = 50;
+        uiColumn2.setColumnWidthMode(GridColumn.ColumnWidthMode.AUTO);
+        int visibleWidth = gridWidget.getModel().getVisibleWidth();
+        double adjustedWidth = handler.adjustColumnWidth(proposedNewWidth, uiColumn2, gridWidget);
+
+        double widthWithoutColumn = gridWidget.getModel()
+                .getColumns().stream()
+                .filter(col -> !col.equals(uiColumn2))
+                .mapToDouble(GridColumn::getWidth)
+                .sum();
+
+        assertEquals(visibleWidth - widthWithoutColumn, adjustedWidth, 0.1);
 
         column.setColumnWidthMode(GridColumn.ColumnWidthMode.FIXED);
         uiModel.appendColumn(column);
         uiModel.appendColumn(rightColumn);
         rightColumn.setColumnWidthMode(GridColumn.ColumnWidthMode.AUTO);
         assertEquals(proposedNewWidth, handler.adjustColumnWidth(proposedNewWidth, column, gridWidget), 0.1);
-        assertEquals(originalRightColumnWidth + (originalColumnWidth - proposedNewWidth), rightColumn.getWidth(), 0.1);
+        double columnDelta = column.getWidth() - proposedNewWidth;
+        double widthWithoutRightColumn = gridWidget.getWidth() - originalRightColumnWidth;
+        double newRightColumnWidth = visibleWidth - widthWithoutRightColumn + columnDelta;
+        assertEquals(newRightColumnWidth, rightColumn.getWidth(), 0.1);
     }
 
     @Test

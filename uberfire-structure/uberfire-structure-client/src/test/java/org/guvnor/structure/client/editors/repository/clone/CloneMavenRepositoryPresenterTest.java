@@ -27,9 +27,9 @@ import org.guvnor.structure.client.editors.repository.clone.answer.RsCreateRepos
 import org.guvnor.structure.client.editors.repository.clone.answer.RsCreateRepositoryFailAnswer;
 import org.guvnor.structure.client.editors.repository.clone.answer.RsNormalizedNameAnswer;
 import org.guvnor.structure.events.AfterCreateOrganizationalUnitEvent;
-import org.guvnor.structure.events.AfterDeleteOrganizationalUnitEvent;
 import org.guvnor.structure.organizationalunit.OrganizationalUnit;
 import org.guvnor.structure.organizationalunit.OrganizationalUnitService;
+import org.guvnor.structure.organizationalunit.RemoveOrganizationalUnitEvent;
 import org.guvnor.structure.organizationalunit.impl.OrganizationalUnitImpl;
 import org.guvnor.structure.repositories.Repository;
 import org.guvnor.structure.repositories.RepositoryAlreadyExistsException;
@@ -377,7 +377,6 @@ public class CloneMavenRepositoryPresenterTest {
     @Test
     public void testCreateOUEvent() {
         final OrganizationalUnit ou = new OrganizationalUnitImpl("ou1",
-                                                                 "owner1",
                                                                  "ou");
         presenter.onCreateOrganizationalUnit(new AfterCreateOrganizationalUnitEvent(ou));
 
@@ -388,9 +387,8 @@ public class CloneMavenRepositoryPresenterTest {
     @Test
     public void testDeleteOUEvent() {
         final OrganizationalUnit ou = new OrganizationalUnitImpl("ou1",
-                                                                 "owner1",
                                                                  "ou");
-        presenter.onDeleteOrganizationalUnit(new AfterDeleteOrganizationalUnitEvent(ou));
+        presenter.onDeleteOrganizationalUnit(new RemoveOrganizationalUnitEvent(ou, "admin"));
 
         verify(view,
                times(1)).deleteOrganizationalUnit(ou);

@@ -20,6 +20,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
+import org.guvnor.structure.contributors.Contributor;
 import org.guvnor.structure.organizationalunit.OrganizationalUnit;
 import org.jboss.errai.common.client.api.Caller;
 import org.jboss.errai.common.client.api.ErrorCallback;
@@ -71,8 +72,10 @@ public class RepositoryServiceCallerMock
         }
 
         @Override
-        public RepositoryInfo getRepositoryInfo(Space space, String alias) {
-            RepositoryInfo result = repositoryService.getRepositoryInfo(space, alias);
+        public RepositoryInfo getRepositoryInfo(Space space,
+                                                String alias) {
+            RepositoryInfo result = repositoryService.getRepositoryInfo(space,
+                                                                        alias);
             remoteCallback.callback(result);
             return result;
         }
@@ -102,8 +105,10 @@ public class RepositoryServiceCallerMock
         }
 
         @Override
-        public List<VersionRecord> getRepositoryHistoryAll(Space space, String alias) {
-            List<VersionRecord> result = repositoryService.getRepositoryHistoryAll(space, alias);
+        public List<VersionRecord> getRepositoryHistoryAll(Space space,
+                                                           String alias) {
+            List<VersionRecord> result = repositoryService.getRepositoryHistoryAll(space,
+                                                                                   alias);
             remoteCallback.callback(result);
             return result;
         }
@@ -125,8 +130,10 @@ public class RepositoryServiceCallerMock
         }
 
         @Override
-        public Repository getRepository(Space space, Path root) {
-            Repository result = repositoryService.getRepository(space, root);
+        public Repository getRepository(Space space,
+                                        Path root) {
+            Repository result = repositoryService.getRepository(space,
+                                                                root);
             remoteCallback.callback(result);
             return result;
         }
@@ -134,6 +141,22 @@ public class RepositoryServiceCallerMock
         @Override
         public Collection<Repository> getAllRepositories(Space space) {
             Collection<Repository> result = repositoryService.getAllRepositories(space);
+            remoteCallback.callback(result);
+            return result;
+        }
+
+        @Override
+        public Collection<Repository> getAllRepositories(Space space,
+                                                         boolean includeDeleted) {
+            Collection<Repository> result = repositoryService.getAllRepositories(space,
+                                                                                 includeDeleted);
+            remoteCallback.callback(result);
+            return result;
+        }
+
+        @Override
+        public Collection<Repository> getAllDeletedRepositories(Space space) {
+            Collection<Repository> result = repositoryService.getAllDeletedRepositories(space);
             remoteCallback.callback(result);
             return result;
         }
@@ -156,13 +179,29 @@ public class RepositoryServiceCallerMock
         public Repository createRepository(final OrganizationalUnit organizationalUnit,
                                            final String scheme,
                                            final String alias,
-                                           final RepositoryEnvironmentConfigurations configuration) throws RepositoryAlreadyExistsException {
+                                           final RepositoryEnvironmentConfigurations configurations) throws RepositoryAlreadyExistsException {
             Repository result = repositoryService.createRepository(organizationalUnit,
                                                                    scheme,
                                                                    alias,
-                                                                   configuration);
+                                                                   configurations);
             remoteCallback.callback(result);
             return result;
+        }
+
+        @Override
+        public Repository createRepository(OrganizationalUnit organizationalUnit,
+                                           String scheme,
+                                           String alias,
+                                           RepositoryEnvironmentConfigurations configurations,
+                                           Collection<Contributor> contributors) throws RepositoryAlreadyExistsException {
+
+            Repository result = repositoryService.createRepository(organizationalUnit,
+                                                                   scheme,
+                                                                   alias,
+                                                                   configurations,
+                                                                   contributors);
+            remoteCallback.callback(result);
+            return null;
         }
 
         @Override
@@ -194,13 +233,24 @@ public class RepositoryServiceCallerMock
         }
 
         @Override
-        public void removeRepository(Space space, String alias) {
-            repositoryService.removeRepository(space, alias);
+        public void updateContributors(Repository repository,
+                                       List<Contributor> contributors) {
+            repositoryService.updateContributors(repository,
+                                                 contributors);
         }
 
         @Override
-        public void removeRepositories(Space space, Set<String> aliases) {
-            repositoryService.removeRepositories(space, aliases);
+        public void removeRepository(Space space,
+                                     String alias) {
+            repositoryService.removeRepository(space,
+                                               alias);
+        }
+
+        @Override
+        public void removeRepositories(Space space,
+                                       Set<String> aliases) {
+            repositoryService.removeRepositories(space,
+                                                 aliases);
         }
     }
 }

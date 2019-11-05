@@ -283,7 +283,7 @@ public class ElasticSearchIndexProvider implements IndexProvider {
                                        .prepareSearch(sanitizeIndexes(indexes).toArray(new String[indexes.size()]))
                                        .setSource(searchSourceBuilder).get());
         } catch (ElasticsearchException e) {
-            logger.debug(MessageFormat.format("Can't perform search: {0}",
+            logger.debug(MessageFormat.format("Unable to perform search: {0}",
                                               e.getMessage()));
         }
         return Optional.empty();
@@ -358,6 +358,11 @@ public class ElasticSearchIndexProvider implements IndexProvider {
     public List<String> getIndices() {
         String[] indices = this.getClient().admin().indices().prepareGetIndex().get().getIndices();
         return Arrays.asList(indices).stream().filter(index -> !index.startsWith(".")).collect(Collectors.toList());
+    }
+
+    @Override
+    public void observerInitialization(Runnable runnable) {
+        // Do nothing
     }
 
     public void putMapping(String index,

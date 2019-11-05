@@ -21,6 +21,9 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 import org.eclipse.jgit.transport.CredentialsProvider;
+import org.eclipse.jgit.transport.ReceiveCommand;
+import org.eclipse.jgit.transport.UploadPack;
+import org.jboss.errai.security.shared.api.identity.User;
 import org.uberfire.java.nio.IOException;
 import org.uberfire.java.nio.base.FileSystemState;
 import org.uberfire.java.nio.base.options.CommentedOption;
@@ -179,6 +182,25 @@ public class JGitFileSystemProxy implements JGitFileSystem {
     @Override
     public void notifyExternalUpdate() {
         cachedSupplier.get().notifyExternalUpdate();
+    }
+
+    @Override
+    public void notifyPostCommit(int exitCode) {
+        cachedSupplier.get().notifyPostCommit(exitCode);
+    }
+
+    @Override
+    public void checkBranchAccess(final ReceiveCommand command,
+                                  final User user) {
+        cachedSupplier.get().checkBranchAccess(command,
+                                               user);
+    }
+
+    @Override
+    public void filterBranchAccess(final UploadPack uploadPack,
+                                   final User user) {
+        cachedSupplier.get().filterBranchAccess(uploadPack,
+                                                user);
     }
 
     @Override

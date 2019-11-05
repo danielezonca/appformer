@@ -37,9 +37,13 @@ public class KIEColours {
 
     public static final String CELL_FOCUS = "#0088CE";
 
-    public static final String CELL_ERROR_FOCUS = "#CC0000";
+    public static final String CELL_ERROR_FOCUS = "#8B0000";
 
     public static final String CELL_ERROR_BACKGROUND = "#FFE6E6";
 
     public static final String PLACEHOLDER_COLOR = "#757575";
+
+    public static final String HIGHLIGHTED_CELL_BACKGROUND = "#F9D67A";
+
+    public static final String HIGHLIGHTED_CELL_STROKE = "#F5C12E";
 }

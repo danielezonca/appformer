@@ -16,25 +16,24 @@
 
 package org.uberfire.client.promise;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.function.BiFunction;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.Supplier;
-
-import javax.annotation.PostConstruct;
-import javax.enterprise.context.Dependent;
-
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.core.client.JavaScriptObject;
 import elemental2.promise.Promise;
-import org.jboss.errai.bus.client.api.messaging.Message;
 import org.jboss.errai.common.client.api.Caller;
 import org.jboss.errai.common.client.api.ErrorCallback;
 import org.jboss.errai.common.client.api.RemoteCallback;
 
-import static org.jboss.errai.bus.client.framework.AbstractRpcProxy.DEFAULT_RPC_ERROR_CALLBACK;
+import javax.annotation.PostConstruct;
+import javax.enterprise.context.Dependent;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.function.BiFunction;
+import java.util.function.BinaryOperator;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
 import static org.uberfire.client.promise.PromisePolyfillBootstrapper.ensurePromiseApiIsAvailable;
 
 @Dependent
@@ -61,6 +60,15 @@ public class Promises {
      */
     public <T, O> Promise<O> all(final List<T> objects, final Function<T, Promise<O>> f) {
         return objects.stream().map(f).reduce(resolve(), (p1, p2) -> p1.then(ignore -> p2));
+    }
+
+    /**
+     * Reduces a list of promises using the accumulator passed.
+     */
+    public final <O> Promise<O> reduce(final Promise<O> identity,
+                                       final Collection<Promise<O>> promises,
+                                       final BinaryOperator<Promise<O>> accumulator) {
+        return promises.stream().reduce(identity, accumulator);
     }
 
     /**
@@ -160,28 +168,13 @@ public class Promises {
         if (o instanceof Promises.Error) {
             return resolve()
                     .then(i -> catchBlock.apply((RuntimeException) ((Error) o).getThrowable()))
-                    .catch_(i -> handleCatchBlockExceptions(o));
+                    .catch_(this::handleCatchBlockExceptions);
         }
 
         return expectedRejectionHandler.apply((V) o);
     }
 
     private <T> Promise<T> handleCatchBlockExceptions(final Object rejectedObject) {
-
-        if (rejectedObject instanceof Error) {
-            final Error error = (Error) rejectedObject;
-
-            if (!(error.getObject() instanceof Message)) {
-                GWT.getUncaughtExceptionHandler().onUncaughtException(
-                        new RuntimeException("Promise.Error did not contain a Message. " +
-                                                     "Something's not right."));
-
-                return resolve();
-            }
-
-            DEFAULT_RPC_ERROR_CALLBACK.error((Message) error.getObject(), error.getThrowable());
-            return resolve();
-        }
 
         if (rejectedObject instanceof Throwable) {
             GWT.getUncaughtExceptionHandler().onUncaughtException((Throwable) rejectedObject);

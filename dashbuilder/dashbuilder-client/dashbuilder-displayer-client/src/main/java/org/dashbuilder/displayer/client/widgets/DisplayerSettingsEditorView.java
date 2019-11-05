@@ -79,6 +79,7 @@ public class DisplayerSettingsEditorView extends Composite implements DisplayerS
         attrMapI18n.put(CHART_GROUP, CommonConstants.INSTANCE.chart_group());
         attrMapI18n.put(CHART_WIDTH, CommonConstants.INSTANCE.chart_width());
         attrMapI18n.put(CHART_HEIGHT, CommonConstants.INSTANCE.chart_height());
+        attrMapI18n.put(CHART_RESIZABLE, CommonConstants.INSTANCE.chart_resizable());
         attrMapI18n.put(CHART_BGCOLOR, CommonConstants.INSTANCE.chart_bgColor());
         attrMapI18n.put(CHART_3D, CommonConstants.INSTANCE.chart_3d());
         attrMapI18n.put(CHART_MARGIN_GROUP, CommonConstants.INSTANCE.chart_marginGroup());
@@ -88,7 +89,7 @@ public class DisplayerSettingsEditorView extends Composite implements DisplayerS
         attrMapI18n.put(CHART_MARGIN_RIGHT, CommonConstants.INSTANCE.chart_rightMargin());
         attrMapI18n.put(CHART_LEGEND_GROUP, CommonConstants.INSTANCE.chart_legendGroup());
         attrMapI18n.put(CHART_SHOWLEGEND, CommonConstants.INSTANCE.chart_legendShow());
-        attrMapI18n.put(CHART_LEGENDPOSITION, CommonConstants.INSTANCE.chart_legendShow());
+        attrMapI18n.put(CHART_LEGENDPOSITION, CommonConstants.INSTANCE.chart_legendPosition());
         attrMapI18n.put(XAXIS_GROUP, CommonConstants.INSTANCE.axis_group());
         attrMapI18n.put(YAXIS_GROUP, CommonConstants.INSTANCE.axis_group());
         attrMapI18n.put(XAXIS_SHOWLABELS, CommonConstants.INSTANCE.xaxis_showLabels());

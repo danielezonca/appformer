@@ -16,19 +16,9 @@
 
 package org.uberfire.ext.editor.commons.client;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
-import java.util.function.Supplier;
-
-import javax.enterprise.event.Event;
-import javax.enterprise.event.Observes;
-import javax.inject.Inject;
-
 import com.google.gwt.core.client.Scheduler;
 import com.google.gwt.user.client.ui.IsWidget;
+import elemental2.promise.Promise;
 import org.jboss.errai.common.client.api.Caller;
 import org.jboss.errai.common.client.api.RemoteCallback;
 import org.jboss.errai.ioc.client.api.ManagedInstance;
@@ -36,15 +26,17 @@ import org.uberfire.backend.vfs.ObservablePath;
 import org.uberfire.backend.vfs.Path;
 import org.uberfire.client.callbacks.Callback;
 import org.uberfire.client.mvp.PlaceManager;
+import org.uberfire.client.promise.Promises;
 import org.uberfire.client.workbench.events.ChangeTitleWidgetEvent;
 import org.uberfire.client.workbench.type.ClientResourceType;
 import org.uberfire.ext.editor.commons.client.event.ConcurrentDeleteAcceptedEvent;
 import org.uberfire.ext.editor.commons.client.event.ConcurrentDeleteIgnoredEvent;
 import org.uberfire.ext.editor.commons.client.event.ConcurrentRenameAcceptedEvent;
 import org.uberfire.ext.editor.commons.client.event.ConcurrentRenameIgnoredEvent;
+import org.uberfire.ext.editor.commons.client.file.popups.DeletePopUpPresenter;
 import org.uberfire.ext.editor.commons.client.history.VersionRecordManager;
 import org.uberfire.ext.editor.commons.client.menu.BasicFileMenuBuilder;
-import org.uberfire.ext.editor.commons.client.menu.DownloadMenuItem;
+import org.uberfire.ext.editor.commons.client.menu.DownloadMenuItemBuilder;
 import org.uberfire.ext.editor.commons.client.menu.MenuItems;
 import org.uberfire.ext.editor.commons.client.menu.common.SaveAndRenameCommandBuilder;
 import org.uberfire.ext.editor.commons.client.resources.i18n.CommonConstants;
@@ -55,6 +47,7 @@ import org.uberfire.ext.editor.commons.service.support.SupportsDelete;
 import org.uberfire.ext.editor.commons.service.support.SupportsRename;
 import org.uberfire.ext.editor.commons.service.support.SupportsSaveAndRename;
 import org.uberfire.ext.editor.commons.version.events.RestoreEvent;
+import org.uberfire.ext.widgets.common.client.common.ConcurrentChangePopup;
 import org.uberfire.java.nio.base.version.VersionRecord;
 import org.uberfire.mvp.Command;
 import org.uberfire.mvp.ParameterizedCommand;
@@ -63,16 +56,15 @@ import org.uberfire.workbench.events.NotificationEvent;
 import org.uberfire.workbench.model.menu.MenuItem;
 import org.uberfire.workbench.model.menu.Menus;
 
-import static org.uberfire.ext.editor.commons.client.menu.MenuItems.COPY;
-import static org.uberfire.ext.editor.commons.client.menu.MenuItems.DELETE;
-import static org.uberfire.ext.editor.commons.client.menu.MenuItems.DOWNLOAD;
-import static org.uberfire.ext.editor.commons.client.menu.MenuItems.HISTORY;
-import static org.uberfire.ext.editor.commons.client.menu.MenuItems.RENAME;
-import static org.uberfire.ext.editor.commons.client.menu.MenuItems.SAVE;
-import static org.uberfire.ext.editor.commons.client.menu.MenuItems.VALIDATE;
-import static org.uberfire.ext.widgets.common.client.common.ConcurrentChangePopup.newConcurrentDelete;
-import static org.uberfire.ext.widgets.common.client.common.ConcurrentChangePopup.newConcurrentRename;
-import static org.uberfire.ext.widgets.common.client.common.ConcurrentChangePopup.newConcurrentUpdate;
+import javax.enterprise.event.Event;
+import javax.enterprise.event.Observes;
+import javax.inject.Inject;
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+import static org.uberfire.ext.editor.commons.client.menu.MenuItems.*;
+import static org.uberfire.ext.widgets.common.client.common.ConcurrentChangePopup.*;
 
 public abstract class BaseEditor<T, M> {
 
@@ -83,6 +75,10 @@ public abstract class BaseEditor<T, M> {
     protected ObservablePath.OnConcurrentUpdateEvent concurrentUpdateSessionInfo = null;
 
     protected Menus menus;
+
+    protected Promise<Void> makeMenuBarPromise;
+    
+    protected boolean saveWithComments = true;
 
     @Inject
     protected PlaceManager placeManager;
@@ -121,7 +117,15 @@ public abstract class BaseEditor<T, M> {
     protected Event<ConcurrentRenameIgnoredEvent> concurrentRenameIgnoredEvent;
 
     @Inject
-    private DownloadMenuItem downloadMenuItem;
+    private DownloadMenuItemBuilder downloadMenuItemBuilder;
+
+    @Inject
+    protected Promises promises;
+
+    @Inject
+    protected DeletePopUpPresenter deletePopUpPresenter;
+
+    protected ConcurrentChangePopup concurrentChangePopup;
 
     protected Set<MenuItems> menuItems = new HashSet<>();
 
@@ -215,11 +219,7 @@ public abstract class BaseEditor<T, M> {
             addFileChangeListeners(path);
         }
 
-        makeMenuBar();
-
-        buildMenuBar();
-
-        loadContent();
+        getMenus(menus -> loadContent());
 
         concurrentUpdateSessionInfo = null;
     }
@@ -231,7 +231,7 @@ public abstract class BaseEditor<T, M> {
     /**
      * If you want to customize the menu content override this method.
      */
-    protected void makeMenuBar() {
+    protected Promise<Void> makeMenuBar() {
         if (menuItems.contains(SAVE)) {
             menuBuilder.addSave(getOnSave());
         }
@@ -257,6 +257,8 @@ public abstract class BaseEditor<T, M> {
         if (menuItems.contains(DOWNLOAD)) {
             addDownloadMenuItem(menuBuilder);
         }
+
+        return promises.resolve();
     }
 
     protected void addDownloadMenuItem(final BasicFileMenuBuilder menuBuilder) {
@@ -264,7 +266,7 @@ public abstract class BaseEditor<T, M> {
     }
 
     protected MenuItem downloadMenuItem() {
-        return downloadMenuItem.build(getPathSupplier());
+        return downloadMenuItemBuilder.build(getPathSupplier());
     }
 
     Command getOnSave() {
@@ -282,10 +284,16 @@ public abstract class BaseEditor<T, M> {
                 .addContentSupplier(getContentSupplier())
                 .addIsDirtySupplier(isDirtySupplier())
                 .addSuccessCallback(onSuccess())
+                .addBeforeSaveAndRenameCommand(getBeforeSaveAndRenameCommand())
                 .build();
     }
 
-    Supplier<Boolean> getSaveValidator() {
+    protected Command getBeforeSaveAndRenameCommand() {
+        return () -> {
+        };
+    }
+
+    protected Supplier<Boolean> getSaveValidator() {
 
         return () -> {
 
@@ -293,7 +301,7 @@ public abstract class BaseEditor<T, M> {
                 baseView.alertReadOnly();
                 return false;
             } else if (isReadOnly && !versionRecordManager.isCurrentLatest()) {
-                versionRecordManager.restoreToCurrentVersion();
+                versionRecordManager.restoreToCurrentVersion(saveWithComments);
                 return false;
             }
 
@@ -337,7 +345,7 @@ public abstract class BaseEditor<T, M> {
      * {@link BasicFileMenuBuilder#build()} to create the {@link Menus}
      */
     protected void buildMenuBar() {
-        if (menuBuilder != null) {
+        if (menuBuilder != null && menus == null) {
             menus = menuBuilder.build();
         }
     }
@@ -382,33 +390,30 @@ public abstract class BaseEditor<T, M> {
             @Override
             public void execute(final ObservablePath.OnConcurrentUpdateEvent eventInfo) {
                 concurrentUpdateSessionInfo = eventInfo;
+                showConcurrentUpdatePopup();
             }
         });
 
-        path.onConcurrentRename(new ParameterizedCommand<ObservablePath.OnConcurrentRenameEvent>() {
-            @Override
-            public void execute(final ObservablePath.OnConcurrentRenameEvent info) {
-                newConcurrentRename(info.getSource(),
-                                    info.getTarget(),
-                                    info.getIdentity(),
-                                    onConcurrentRenameIgnoreCommand(path),
-                                    onConcurrentRenameCloseCommand(path)).show();
-            }
-        });
+        path.onConcurrentRename(this::onConcurrentRename);
 
-        path.onConcurrentDelete(new ParameterizedCommand<ObservablePath.OnConcurrentDelete>() {
-            @Override
-            public void execute(final ObservablePath.OnConcurrentDelete info) {
-                newConcurrentDelete(info.getPath(),
-                                    info.getIdentity(),
-                                    onConcurrentDeleteIgnoreCommand(path),
-                                    onConcurrentDeleteCloseCommand(path)).show();
-            }
-        });
+        path.onConcurrentDelete(this::onConcurrentDelete);
+    }
+
+    void onConcurrentRename(final ObservablePath.OnConcurrentRenameEvent info) {
+        baseView.hideBusyIndicator();
+        if (concurrentChangePopup == null) {
+            concurrentChangePopup = newConcurrentRename(info.getSource(),
+                                                        info.getTarget(),
+                                                        info.getIdentity(),
+                                                        onConcurrentRenameIgnoreCommand(path),
+                                                        onConcurrentRenameCloseCommand(path));
+        }
+        concurrentChangePopup.show();
     }
 
     Command onConcurrentRenameIgnoreCommand(final ObservablePath path) {
         return () -> {
+            concurrentChangePopup = null;
             disableMenus();
             concurrentRenameIgnoredEvent.fire(new ConcurrentRenameIgnoredEvent(path));
         };
@@ -416,23 +421,45 @@ public abstract class BaseEditor<T, M> {
 
     Command onConcurrentRenameCloseCommand(final ObservablePath path) {
         return () -> {
+            concurrentChangePopup = null;
             reload();
             concurrentRenameAcceptedEvent.fire(new ConcurrentRenameAcceptedEvent(path));
         };
     }
 
+    void onConcurrentDelete(final ObservablePath.OnConcurrentDelete info) {
+        baseView.hideBusyIndicator();
+        if (concurrentChangePopup == null) {
+            concurrentChangePopup = newConcurrentDelete(info.getPath(),
+                                                        info.getIdentity(),
+                                                        onConcurrentDeleteIgnoreCommand(path),
+                                                        onConcurrentDeleteCloseCommand(path));
+        }
+        concurrentChangePopup.show();
+    }
+
     Command onConcurrentDeleteIgnoreCommand(final ObservablePath path) {
         return () -> {
+            concurrentChangePopup = null;
             disableMenus();
+            disableDeletePopup();
             concurrentDeleteIgnoredEvent.fire(new ConcurrentDeleteIgnoredEvent(path));
         };
     }
 
     Command onConcurrentDeleteCloseCommand(final ObservablePath path) {
         return () -> {
+            concurrentChangePopup = null;
+            disableDeletePopup();
             placeManager.closePlace(place);
             concurrentDeleteAcceptedEvent.fire(new ConcurrentDeleteAcceptedEvent(path));
         };
+    }
+
+    private void disableDeletePopup() {
+        if (deletePopUpPresenter.isOpened()) {
+            deletePopUpPresenter.cancel();
+        }
     }
 
     private void onDelete() {
@@ -483,27 +510,36 @@ public abstract class BaseEditor<T, M> {
     }
 
     protected void showConcurrentUpdatePopup() {
-        newConcurrentUpdate(concurrentUpdateSessionInfo.getPath(),
-                            concurrentUpdateSessionInfo.getIdentity(),
-                            new Command() {
-                                @Override
-                                public void execute() {
-                                    save();
-                                }
-                            },
-                            new Command() {
-                                @Override
-                                public void execute() {
-                                    //cancel?
-                                }
-                            },
-                            new Command() {
-                                @Override
-                                public void execute() {
-                                    reload();
-                                }
-                            }
-        ).show();
+        baseView.hideBusyIndicator();
+        if (concurrentChangePopup == null) {
+            concurrentChangePopup = getConcurrentUpdatePopup();
+        }
+        concurrentChangePopup.show();
+    }
+
+    ConcurrentChangePopup getConcurrentUpdatePopup() {
+        return newConcurrentUpdate(concurrentUpdateSessionInfo.getPath(),
+                                                    concurrentUpdateSessionInfo.getIdentity(),
+                                                    new Command() {
+                                                        @Override
+                                                        public void execute() {
+                                                            save();
+                                                            concurrentChangePopup = null;
+                                                        }
+                                                    },
+                                                    new Command() {
+                                                        @Override
+                                                        public void execute() {
+                                                            concurrentChangePopup = null;
+                                                        }
+                                                    },
+                                                    new Command() {
+                                                        @Override
+                                                        public void execute() {
+                                                            reload();
+                                                            concurrentChangePopup = null;
+                                                        }
+                                                    });
     }
 
     public RemoteCallback<Path> getSaveSuccessCallback(final int newHash) {
@@ -593,9 +629,40 @@ public abstract class BaseEditor<T, M> {
         disableMenuItem(MenuItems.VALIDATE);
     }
 
-    private void disableMenuItem(final MenuItems menuItem) {
-        if (menus.getItemsMap().containsKey(menuItem)) {
-            menus.getItemsMap().get(menuItem).setEnabled(false);
+    public void disableMenuItem(final MenuItems menuItem) {
+        setEnableMenuItem(menuItem, false);
+    }
+
+    public void enableMenuItem(final MenuItems menuItem) {
+        setEnableMenuItem(menuItem, true);
+    }
+
+    private void setEnableMenuItem(final MenuItems menuItem,
+                                   final boolean isEnabled) {
+        getMenus(menus -> {
+            if (menus.getItemsMap().containsKey(menuItem)) {
+                menus.getItemsMap().get(menuItem).setEnabled(isEnabled);
+            }
+        });
+    }
+
+    public void getMenus(final Consumer<Menus> menusConsumer) {
+        if (menus != null) {
+            menusConsumer.accept(menus);
+            return;
+        }
+
+        if (makeMenuBarPromise == null) {
+            makeMenuBarPromise = makeMenuBar().then(v -> {
+                buildMenuBar();
+                menusConsumer.accept(menus);
+                return promises.resolve();
+            });
+        } else {
+            makeMenuBarPromise.then(v -> {
+                menusConsumer.accept(menus);
+                return promises.resolve();
+            });
         }
     }
 

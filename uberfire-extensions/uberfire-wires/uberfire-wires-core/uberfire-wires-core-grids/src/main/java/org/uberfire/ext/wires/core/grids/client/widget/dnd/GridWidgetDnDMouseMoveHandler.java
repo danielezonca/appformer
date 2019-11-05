@@ -468,13 +468,16 @@ public class GridWidgetDnDMouseMoveHandler implements NodeMouseMoveHandler {
             if (rightGridColumn.isPresent()) {
                 GridColumn<?> rightColumn = rightGridColumn.get();
                 double originalRightColumnWidth = rightColumn.getWidth();
-                double newWidth = originalRightColumnWidth + delta;
+                double widthWithoutColumn = gridWidgetWidth - originalRightColumnWidth;
+
+                double newWidth = visibleWidth - widthWithoutColumn + delta;
 
                 rightColumn.setWidth(newWidth);
             }
             // or revert column resizing if the column itself has AUTO width
-            else if (GridColumn.ColumnWidthMode.isAuto(activeGridColumn)){
-                columnNewWidth = originalLeftColumnWidth;
+            else if (GridColumn.ColumnWidthMode.isAuto(activeGridColumn)) {
+                double widthWithoutColumn = gridWidgetWidth - originalLeftColumnWidth;
+                columnNewWidth = visibleWidth - widthWithoutColumn;
             }
         }
         return columnNewWidth;
@@ -484,9 +487,9 @@ public class GridWidgetDnDMouseMoveHandler implements NodeMouseMoveHandler {
         List<GridColumn<?>> columns = model.getColumns();
         int targetIndex = columns.indexOf(target);
 
-        for(int i = targetIndex + 1; i < columns.size(); i += 1) {
+        for (int i = targetIndex + 1; i < columns.size(); i += 1) {
             GridColumn<?> gridColumn = columns.get(i);
-            if(GridColumn.ColumnWidthMode.isAuto(gridColumn)) {
+            if (GridColumn.ColumnWidthMode.isAuto(gridColumn)) {
                 return Optional.of(gridColumn);
             }
         }
@@ -553,14 +556,14 @@ public class GridWidgetDnDMouseMoveHandler implements NodeMouseMoveHandler {
                                     destroyColumns(allGridColumns);
                                     activeGridModel.moveColumnsTo(candidateBlockEndColumnIndex,
                                                                   activeGridColumns);
-                                    state.getEventColumnHighlight().setX(activeGridWidget.getAbsoluteX() + rendererHelper.getColumnOffset(activeGridColumns.get(0)));
+                                    state.getEventColumnHighlight().setX(activeGridWidget.getComputedLocation().getX() + rendererHelper.getColumnOffset(activeGridColumns.get(0)));
                                     layer.batch();
                                     return;
                                 } else {
                                     destroyColumns(allGridColumns);
                                     activeGridModel.moveColumnsTo(candidateBlockStartColumnIndex,
                                                                   activeGridColumns);
-                                    state.getEventColumnHighlight().setX(activeGridWidget.getAbsoluteX() + rendererHelper.getColumnOffset(activeGridColumns.get(0)));
+                                    state.getEventColumnHighlight().setX(activeGridWidget.getComputedLocation().getX() + rendererHelper.getColumnOffset(activeGridColumns.get(0)));
                                     layer.batch();
                                     return;
                                 }
@@ -640,7 +643,7 @@ public class GridWidgetDnDMouseMoveHandler implements NodeMouseMoveHandler {
                                    activeGridRows);
 
         final double rowOffsetY = rendererHelper.getRowOffset(leadRow) + headerHeight;
-        state.getEventColumnHighlight().setY(activeGridWidget.getAbsoluteY() + rowOffsetY);
+        state.getEventColumnHighlight().setY(activeGridWidget.getComputedLocation().getY() + rowOffsetY);
         layer.batch();
     }
 

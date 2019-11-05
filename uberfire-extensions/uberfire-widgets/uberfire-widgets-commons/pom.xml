@@ -22,7 +22,7 @@
   <parent>
     <groupId>org.uberfire</groupId>
     <artifactId>uberfire-widgets</artifactId>
-    <version>2.12.0-SNAPSHOT</version>
+    <version>7.30.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>uberfire-widgets-commons</artifactId>
@@ -141,6 +141,13 @@
       <artifactId>gwtmockito</artifactId>
       <scope>test</scope>
     </dependency>
+
+    <dependency><!-- to get CallerMock in unit test-->
+      <groupId>org.uberfire</groupId>
+      <artifactId>uberfire-testing-utils</artifactId>
+      <scope>test</scope>
+    </dependency>
+
 
   </dependencies>
 

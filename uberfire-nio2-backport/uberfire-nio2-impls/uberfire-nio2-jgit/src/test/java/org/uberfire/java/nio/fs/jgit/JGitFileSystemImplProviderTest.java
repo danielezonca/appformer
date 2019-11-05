@@ -895,7 +895,7 @@ public class JGitFileSystemImplProviderTest extends AbstractTestInfra {
 
         provider.delete(doraFS1.getPath(null));
         assertFalse(dora1RepoDir.exists());
-        assertFalse(parentDir1.exists());
+        assertTrue(parentDir1.exists());
         assertTrue(gitProviderDir.exists());
     }
 
@@ -2127,8 +2127,9 @@ public class JGitFileSystemImplProviderTest extends AbstractTestInfra {
     @Test
     public void extractFSHooksTest() {
         Map<String, Object> env = new HashMap<>();
-        Object hook = (FileSystemHooks.FileSystemHook<String>) fsName -> {
-        };
+
+        Object hook = (FileSystemHooks.FileSystemHook) context -> { };
+
         env.put("dora", "bento");
         env.put(FileSystemHooks.ExternalUpdate.name(), hook);
 
@@ -2137,6 +2138,22 @@ public class JGitFileSystemImplProviderTest extends AbstractTestInfra {
         assertEquals(1, fileSystemHooksMap.size());
         assertTrue(fileSystemHooksMap.keySet().contains(FileSystemHooks.ExternalUpdate));
         assertEquals(hook, fileSystemHooksMap.get(FileSystemHooks.ExternalUpdate));
+    }
+
+    @Test
+    public void extractCheckBranchAccessHookTest() {
+        Map<String, Object> env = new HashMap<>();
+
+        Object hook = (FileSystemHooks.FileSystemHook) context -> { };
+
+        env.put("dora", "bento");
+        env.put(FileSystemHooks.BranchAccessCheck.name(), hook);
+
+        Map<FileSystemHooks, ?> fileSystemHooksMap = JGitFileSystemProvider.extractFSHooks(env);
+
+        assertEquals(1, fileSystemHooksMap.size());
+        assertTrue(fileSystemHooksMap.keySet().contains(FileSystemHooks.BranchAccessCheck));
+        assertEquals(hook, fileSystemHooksMap.get(FileSystemHooks.BranchAccessCheck));
     }
 
     @Test

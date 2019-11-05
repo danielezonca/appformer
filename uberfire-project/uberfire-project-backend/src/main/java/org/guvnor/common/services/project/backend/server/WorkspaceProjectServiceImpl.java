@@ -17,8 +17,10 @@ package org.guvnor.common.services.project.backend.server;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+
 import javax.enterprise.event.Event;
 import javax.enterprise.inject.Instance;
 import javax.inject.Inject;
@@ -34,12 +36,17 @@ import org.guvnor.common.services.project.service.GAVAlreadyExistsException;
 import org.guvnor.common.services.project.service.ModuleRepositoryResolver;
 import org.guvnor.common.services.project.service.ModuleService;
 import org.guvnor.common.services.project.service.WorkspaceProjectService;
+import org.guvnor.common.services.project.utils.NewWorkspaceProjectUtils;
+import org.guvnor.structure.contributors.Contributor;
 import org.guvnor.structure.organizationalunit.OrganizationalUnit;
 import org.guvnor.structure.organizationalunit.OrganizationalUnitService;
+import org.guvnor.structure.organizationalunit.config.SpaceConfigStorageRegistry;
 import org.guvnor.structure.repositories.Branch;
 import org.guvnor.structure.repositories.Repository;
 import org.guvnor.structure.repositories.RepositoryEnvironmentConfigurations;
 import org.guvnor.structure.repositories.RepositoryService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.uberfire.backend.server.util.Paths;
 import org.uberfire.backend.vfs.Path;
 import org.uberfire.spaces.Space;
@@ -56,6 +63,8 @@ public class WorkspaceProjectServiceImpl
     private ModuleService<? extends Module> moduleService;
     private SpacesAPI spaces;
     private ModuleRepositoryResolver repositoryResolver;
+    private SpaceConfigStorageRegistry spaceConfigStorageRegistry;
+    private Logger logger = LoggerFactory.getLogger(WorkspaceProjectServiceImpl.class);
 
     public WorkspaceProjectServiceImpl() {
     }
@@ -66,13 +75,15 @@ public class WorkspaceProjectServiceImpl
                                        final SpacesAPI spaces,
                                        final Event<NewProjectEvent> newProjectEvent,
                                        final Instance<ModuleService<? extends Module>> moduleServices,
-                                       final ModuleRepositoryResolver repositoryResolver) {
+                                       final ModuleRepositoryResolver repositoryResolver,
+                                       final SpaceConfigStorageRegistry spaceConfigStorageRegistry) {
         this.organizationalUnitService = organizationalUnitService;
         this.repositoryService = repositoryService;
         this.spaces = spaces;
         this.newProjectEvent = newProjectEvent;
-        moduleService = moduleServices.get();
+        this.moduleService = moduleServices.get();
         this.repositoryResolver = repositoryResolver;
+        this.spaceConfigStorageRegistry = spaceConfigStorageRegistry;
     }
 
     @Override
@@ -96,11 +107,20 @@ public class WorkspaceProjectServiceImpl
     @Override
     public Collection<WorkspaceProject> getAllWorkspaceProjectsByName(final OrganizationalUnit organizationalUnit,
                                                                       final String name) {
+        return this.getAllWorkspaceProjectsByName(organizationalUnit,
+                                                  name,
+                                                  false);
+    }
+
+    public Collection<WorkspaceProject> getAllWorkspaceProjectsByName(final OrganizationalUnit organizationalUnit,
+                                                                      final String name,
+                                                                      final boolean includeDeleted) {
         final List<WorkspaceProject> result = new ArrayList<>();
 
         Space space = spaces.getSpace(organizationalUnit.getName());
 
-        for (final Repository repository : repositoryService.getAllRepositories(space)) {
+        for (final Repository repository : repositoryService.getAllRepositories(space,
+                                                                                includeDeleted)) {
 
             if (repository.getDefaultBranch().isPresent()) {
 
@@ -120,7 +140,8 @@ public class WorkspaceProjectServiceImpl
     public boolean spaceHasNoProjectsWithName(final OrganizationalUnit organizationalUnit,
                                               final String name,
                                               final WorkspaceProject projectToIgnore) {
-        return getAllWorkspaceProjectsByName(organizationalUnit, name)
+        return getAllWorkspaceProjectsByName(organizationalUnit,
+                                             name)
                 .stream().noneMatch(p -> !p.getEncodedIdentifier().equals(projectToIgnore.getEncodedIdentifier()));
     }
 
@@ -136,42 +157,79 @@ public class WorkspaceProjectServiceImpl
     public WorkspaceProject newProject(final OrganizationalUnit organizationalUnit,
                                        final POM pom,
                                        final DeploymentMode mode) {
-        String newName = this.createFreshProjectName(organizationalUnit,
-                                                     pom.getName());
-        pom.setName(newName);
+        return newProject(organizationalUnit,
+                          pom,
+                          mode,
+                          null);
+    }
 
-        if (DeploymentMode.VALIDATED.equals(mode)) {
-            checkRepositories(pom);
+    @Override
+    public WorkspaceProject newProject(final OrganizationalUnit organizationalUnit,
+                                       final POM pom,
+                                       final DeploymentMode mode,
+                                       final List<Contributor> contributors) {
+
+        return spaceConfigStorageRegistry.getBatch(organizationalUnit.getSpace().getName())
+                .run(context -> {
+                    final String newName = this.createFreshProjectName(organizationalUnit, pom.getName());
+
+                    pom.setName(newName);
+
+                    if (DeploymentMode.VALIDATED.equals(mode)) {
+                        checkRepositories(pom);
+                    }
+
+                    String repositoryAlias = this.createFreshRepositoryAlias(organizationalUnit, pom.getName());
+
+                    final Repository repository = repositoryService.createRepository(organizationalUnit,
+                                                                                     "git",
+                                                                                     repositoryAlias,
+                                                                                     new RepositoryEnvironmentConfigurations(),
+                                                                                     contributors != null ? contributors : Collections.emptyList());
+
+                    try {
+                        if (!repository.getDefaultBranch().isPresent()) {
+                            throw new IllegalStateException("New repository should always have a branch.");
+                        }
+
+                        final Module module = moduleService.newModule(repository.getDefaultBranch().get().getPath(),
+                                                                      pom,
+                                                                      mode);
+
+                        final WorkspaceProject workspaceProject = new WorkspaceProject(organizationalUnit,
+                                                                                       repository,
+                                                                                       repository.getDefaultBranch().get(),
+                                                                                       module);
+
+                        newProjectEvent.fire(new NewProjectEvent(workspaceProject));
+
+                        return workspaceProject;
+                    } catch (Exception e) {
+                        logger.error("Error trying to create project", e);
+                        logger.error("Error trying to create project " + organizationalUnit.getName() + " - " + repository.getAlias(), e);
+                        try {
+                            this.repositoryService.removeRepository(this.spaces.getSpace(organizationalUnit.getName()), repository.getAlias());
+                        } catch (Exception ex) {
+                            logger.error("Error trying to delete repository", ex);
+                            logger.error("Error trying to delete repository " + organizationalUnit.getName() + " - " + repository.getAlias(), ex);
+                            throw ExceptionUtilities.handleException(ex);
+                        }
+                        throw ExceptionUtilities.handleException(e);
+                    }
+                });
+    }
+
+    String createFreshRepositoryAlias(final OrganizationalUnit organizationalUnit,
+                                      final String projectName) {
+        int index = 0;
+        String suffix = "";
+        String repositoryAlias = checkNotNull("project name in pom model", NewWorkspaceProjectUtils.sanitizeProjectName(projectName));
+
+        while (repositoryService.getRepositoryFromSpace(organizationalUnit.getSpace(), repositoryAlias + suffix) != null) {
+            suffix = "-" + ++index;
         }
 
-        final Repository repository = repositoryService.createRepository(organizationalUnit,
-                                                                         "git",
-                                                                         checkNotNull("project name in pom model",
-                                                                                      pom.getName()),
-                                                                         new RepositoryEnvironmentConfigurations());
-
-        if (!repository.getDefaultBranch().isPresent()) {
-            throw new IllegalStateException("New repository should always have a branch.");
-        }
-
-        try {
-            final Module module = moduleService.newModule(repository.getDefaultBranch().get().getPath(),
-                                                          pom,
-                                                          mode);
-
-            final WorkspaceProject workspaceProject = new WorkspaceProject(organizationalUnit,
-                                                                           repository,
-                                                                           repository.getDefaultBranch().get(),
-                                                                           module);
-
-            newProjectEvent.fire(new NewProjectEvent(workspaceProject));
-
-            return workspaceProject;
-        } catch (Exception e) {
-            this.repositoryService.removeRepository(this.spaces.getSpace(organizationalUnit.getName()),
-                                                    repository.getAlias());
-            throw ExceptionUtilities.handleException(e);
-        }
+        return repositoryAlias + suffix;
     }
 
     @Override
@@ -180,7 +238,8 @@ public class WorkspaceProjectServiceImpl
         int index = 0;
         String suffix = "";
         while (!this.getAllWorkspaceProjectsByName(organizationalUnit,
-                                                   name + suffix).isEmpty()) {
+                                                   name + suffix,
+                                                   true).isEmpty()) {
             suffix = "-" + ++index;
         }
 
@@ -248,6 +307,10 @@ public class WorkspaceProjectServiceImpl
         final Repository repository = repositoryService.getRepository(space,
                                                                       Paths.convert(repositoryRoot));
 
+        if (repository == null) {
+            throw new RuntimeException("Repository not found inside space " + space.getName() + " with path " + path.toURI() + " (root path " + repositoryRoot.toUri() + ")");
+        }
+
         final Branch branch = resolveBranch(repositoryRoot,
                                             repository);
 
@@ -268,6 +331,9 @@ public class WorkspaceProjectServiceImpl
 
     private Branch resolveBranch(final org.uberfire.java.nio.file.Path repositoryRoot,
                                  final Repository repository) {
+        if (!repository.getDefaultBranch().isPresent()) {
+            throw new RuntimeException("Default branch not found in repository " + repository.getAlias() + " with path " + repositoryRoot.toUri());
+        }
 
         final Branch defaultBranch = repository.getDefaultBranch().get();
 

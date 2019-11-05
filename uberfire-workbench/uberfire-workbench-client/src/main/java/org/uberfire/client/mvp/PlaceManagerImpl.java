@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+
 import javax.annotation.PostConstruct;
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.event.Event;
@@ -82,8 +83,7 @@ import static org.uberfire.plugin.PluginUtil.toInteger;
 
 @SharedSingleton
 @EnabledByProperty(value = "uberfire.plugin.mode.active", negated = true)
-public class PlaceManagerImpl
-        implements PlaceManager {
+public class PlaceManagerImpl implements PlaceManager {
 
     /**
      * Activities that have been created by us but not destroyed (TODO: move this state tracking to ActivityManager!).
@@ -134,6 +134,12 @@ public class PlaceManagerImpl
     private LayoutSelection layoutSelection;
     @Inject
     private ExperimentalActivitiesAuthorizationManager activitiesAuthorizationManager;
+    @Inject
+    private AppFormerActivityLoader appFormerActivityLoader;
+
+    public interface AppFormerActivityLoader {
+        boolean triggerLoadOfMatchingEditors(final Path path, final Runnable callback);
+    }
 
     @PostConstruct
     public void initPlaceHistoryHandler() {
@@ -217,9 +223,26 @@ public class PlaceManagerImpl
     }
 
     @Override
+    public void goTo(final String id,
+                     final HTMLElement addTo) {
+        final DefaultPlaceRequest place = new DefaultPlaceRequest(id);
+        goTo(place, addTo);
+    }
+
+    @Override
     public void goTo(PlaceRequest place,
                      HTMLElement addTo) {
 
+        closeOpenPlacesAt(panelsOfThisHTMLElement(addTo));
+
+        goToTargetPanel(place,
+                        panelManager.addCustomPanel(addTo,
+                                                    UnanchoredStaticWorkbenchPanelPresenter.class.getName()));
+    }
+
+    @Override
+    public void goTo(final PlaceRequest place,
+                     final elemental2.dom.HTMLElement addTo) {
         closeOpenPlacesAt(panelsOfThisHTMLElement(addTo));
 
         goToTargetPanel(place,
@@ -240,6 +263,10 @@ public class PlaceManagerImpl
 
     private Predicate<CustomPanelDefinition> panelsOfThisHasWidgets(HasWidgets addTo) {
         return p -> p.getHasWidgetsContainer().isPresent() && p.getHasWidgetsContainer().get().equals(addTo);
+    }
+
+    private Predicate<CustomPanelDefinition> panelsOfThisHTMLElement(elemental2.dom.HTMLElement addTo) {
+        return p -> p.getElemental2HtmlElementContainer().isPresent() && p.getElemental2HtmlElementContainer().get().equals(addTo);
     }
 
     private void goToTargetPanel(final PlaceRequest place,
@@ -264,6 +291,7 @@ public class PlaceManagerImpl
         if (place == null || place.equals(DefaultPlaceRequest.NOWHERE)) {
             return;
         }
+
         final ResolvedRequest resolved = resolveActivity(place);
 
         if (resolved.getActivity() != null) {
@@ -369,6 +397,7 @@ public class PlaceManagerImpl
      * {@code org.uberfire.client.mvp.PlaceManagerImpl.ignoreUnkownPlaces} property in {@link UberfirePreferences}.
      * @param place A non-null place request that could have originated from within application code, from within the
      * framework, or by parsing a hash fragment from a browser history event.
+     * @param lazyLoadingSuccessCallback
      * @return a non-null ResolvedRequest, where:
      * <ul>
      * <li>the Activity value is either the unambiguous resolved Activity instance, or null if the activity was
@@ -388,6 +417,10 @@ public class PlaceManagerImpl
 
         if (existingDestination != null) {
             return existingDestination;
+        }
+
+        if (appFormerActivityLoader.triggerLoadOfMatchingEditors(place.getPath(), () -> closeLazyLoadingScreenAndGoToPlace(place))) {
+            return new ResolvedRequest(null, new DefaultPlaceRequest("LazyLoadingScreen"));
         }
 
         final Set<Activity> activities = activityManager.getActivities(resolvedPlaceRequest);
@@ -420,6 +453,10 @@ public class PlaceManagerImpl
                                         unambigousActivity);
         return new ResolvedRequest(unambigousActivity,
                                    resolvedPlaceRequest);
+    }
+
+    private void closeLazyLoadingScreenAndGoToPlace(final PlaceRequest place) {
+        this.closePlace(new DefaultPlaceRequest("LazyLoadingScreen"), () -> this.goTo(place));
     }
 
     private PlaceRequest resolvePlaceRequest(PlaceRequest place) {
@@ -471,12 +508,15 @@ public class PlaceManagerImpl
         if (place == null) {
             return;
         }
+
         final ResolvedRequest resolved = resolveActivity(place);
 
         if (resolved.getActivity() != null) {
             final Activity activity = resolved.getActivity();
 
-            if (activity.isType(ActivityResourceType.EDITOR.name()) || activity.isType(ActivityResourceType.SCREEN.name())) {
+            if (activity.isType(ActivityResourceType.EDITOR.name()) ||
+                    activity.isType(ActivityResourceType.CLIENT_EDITOR.name()) ||
+                    activity.isType(ActivityResourceType.SCREEN.name())) {
                 final WorkbenchActivity workbenchActivity = (WorkbenchActivity) activity;
                 launchWorkbenchActivityInPanel(place,
                                                workbenchActivity,
@@ -852,26 +892,28 @@ public class PlaceManagerImpl
                                          titleDecoration,
                                          widget);
 
-        panelManager.addWorkbenchPart(place,
-                                      part,
-                                      panel,
-                                      activity.getMenus(),
-                                      uiPart,
-                                      activity.contextId(),
-                                      toInteger(panel.getWidthAsInt()),
-                                      toInteger(panel.getHeightAsInt()));
-        addSplashScreenFor(place);
+        activity.getMenus(menus -> {
+            panelManager.addWorkbenchPart(place,
+                                          part,
+                                          panel,
+                                          menus,
+                                          uiPart,
+                                          activity.contextId(),
+                                          toInteger(panel.getWidthAsInt()),
+                                          toInteger(panel.getHeightAsInt()));
+            addSplashScreenFor(place);
 
-        try {
-            activity.onOpen();
-            getPlaceHistoryHandler().registerOpen(activity,
-                                                  place);
-        } catch (Exception ex) {
-            lifecycleErrorHandler.handle(activity,
-                                         LifecyclePhase.OPEN,
-                                         ex);
-            closePlace(place);
-        }
+            try {
+                activity.onOpen();
+                getPlaceHistoryHandler().registerOpen(activity,
+                                                      place);
+            } catch (Exception ex) {
+                lifecycleErrorHandler.handle(activity,
+                                             LifecyclePhase.OPEN,
+                                             ex);
+                closePlace(place);
+            }
+        });
     }
 
     private IsWidget maybeWrapExternalWidget(WorkbenchActivity activity,
@@ -1103,6 +1145,8 @@ public class PlaceManagerImpl
                 } else {
                     return;
                 }
+            } else {
+                activity.onClose();
             }
 
             getPlaceHistoryHandler().registerClose(activity,
@@ -1152,6 +1196,11 @@ public class PlaceManagerImpl
         }
 
         return false;
+    }
+
+    @Override
+    public boolean canCloseAllPlaces() {
+        return getUncloseablePlaces().isEmpty();
     }
 
     @SuppressWarnings("unused")

@@ -30,8 +30,11 @@ import org.guvnor.common.services.project.model.WorkspaceProject;
 import org.guvnor.common.services.project.service.ModuleRepositoryResolver;
 import org.guvnor.common.services.project.service.ModuleService;
 import org.guvnor.common.services.project.service.WorkspaceProjectService;
+import org.guvnor.structure.backend.organizationalunit.config.SpaceConfigStorageRegistryImpl;
 import org.guvnor.structure.organizationalunit.OrganizationalUnit;
 import org.guvnor.structure.organizationalunit.OrganizationalUnitService;
+import org.guvnor.structure.organizationalunit.config.SpaceConfigStorage;
+import org.guvnor.structure.organizationalunit.config.SpaceConfigStorageRegistry;
 import org.guvnor.structure.organizationalunit.impl.OrganizationalUnitImpl;
 import org.guvnor.structure.repositories.Branch;
 import org.guvnor.structure.repositories.Repository;
@@ -79,6 +82,12 @@ public class WorkspaceProjectServiceImplTest {
     @Mock
     ModuleRepositoryResolver repositoryResolver;
 
+    @Mock
+    SpaceConfigStorageRegistry spaceConfigStorageRegistry;
+
+    @Mock
+    SpaceConfigStorage spaceConfigStorage;
+
     SpacesAPI spaces = new SpacesAPIImpl();
 
     Space space1;
@@ -98,20 +107,23 @@ public class WorkspaceProjectServiceImplTest {
         doReturn(moduleService).when(moduleServices).get();
         doReturn(allRepositories).when(repositoryService).getAllRepositoriesFromAllUserSpaces();
 
+        when(spaceConfigStorageRegistry.get(anyString())).thenReturn(spaceConfigStorage);
+        when(spaceConfigStorageRegistry.getBatch(anyString())).thenReturn(new SpaceConfigStorageRegistryImpl.SpaceStorageBatchImpl(spaceConfigStorage));
+        when(spaceConfigStorageRegistry.exist(anyString())).thenReturn(true);
+
         workspaceProjectService = new WorkspaceProjectServiceImpl(organizationalUnitService,
                                                                   repositoryService,
                                                                   spaces,
                                                                   new EventSourceMock<>(),
                                                                   moduleServices,
-                                                                  repositoryResolver);
+                                                                  repositoryResolver,
+                                                                  spaceConfigStorageRegistry);
     }
 
     private void setUpOUs() {
         ou1 = new OrganizationalUnitImpl("ou1",
-                                         "owner",
                                          "defaultGroupID");
         ou2 = new OrganizationalUnitImpl("ou2",
-                                         "owner",
                                          "defaultGroupID");
         space1 = spaces.getSpace("ou1");
         space2 = spaces.getSpace("ou2");
@@ -123,6 +135,7 @@ public class WorkspaceProjectServiceImplTest {
         allOUs.add(ou1);
         allOUs.add(ou2);
         doReturn(allOUs).when(organizationalUnitService).getOrganizationalUnits();
+        doReturn(allOUs).when(organizationalUnitService).getAllOrganizationalUnits();
 
         ou1.getRepositories().add(repository1);
         ou1.getRepositories().add(repository2);
@@ -152,13 +165,15 @@ public class WorkspaceProjectServiceImplTest {
         doReturn(Arrays.asList(repository1,
                                repository2)).when(repositoryService).getRepositories(Mockito.eq(space1));
         doReturn(Arrays.asList(repository1,
-                               repository2)).when(repositoryService).getAllRepositories(Mockito.eq(space1));
-        doReturn(Arrays.asList(repository3)).when(repositoryService).getAllRepositories(Mockito.eq(space2));
+                               repository2)).when(repositoryService).getAllRepositories(Mockito.eq(space1),
+                                                                                        anyBoolean());
+        doReturn(Arrays.asList(repository3)).when(repositoryService).getAllRepositories(Mockito.eq(space2),
+                                                                                        anyBoolean());
         doReturn(Collections.singletonList(repository3)).when(repositoryService).getRepositories(Mockito.eq(space2));
     }
 
     @Test
-    public void getAllProjects() throws Exception {
+    public void getAllProjects() {
 
         final Collection<WorkspaceProject> allWorkspaceProjects = workspaceProjectService.getAllWorkspaceProjects();
 
@@ -167,7 +182,7 @@ public class WorkspaceProjectServiceImplTest {
     }
 
     @Test
-    public void getAllProjectsForOU1() throws Exception {
+    public void getAllProjectsForOU1() {
         final Collection<WorkspaceProject> allWorkspaceProjects = workspaceProjectService.getAllWorkspaceProjects(ou1);
 
         assertContains(repository1,
@@ -180,7 +195,7 @@ public class WorkspaceProjectServiceImplTest {
     }
 
     @Test
-    public void getAllProjectsForOU2() throws Exception {
+    public void getAllProjectsForOU2() {
         final Collection<WorkspaceProject> allWorkspaceProjects = workspaceProjectService.getAllWorkspaceProjects(ou2);
 
         assertContains(repository3,
@@ -191,7 +206,7 @@ public class WorkspaceProjectServiceImplTest {
     }
 
     @Test
-    public void getAllProjectsWithName() throws Exception {
+    public void getAllProjectsWithName() {
         final Collection<WorkspaceProject> allWorkspaceProjects = workspaceProjectService.getAllWorkspaceProjectsByName(ou1,
                                                                                                                         "repository-with-same-alias");
 
@@ -203,7 +218,7 @@ public class WorkspaceProjectServiceImplTest {
     }
 
     @Test
-    public void spaceHasProjectsWithName() throws Exception {
+    public void spaceHasProjectsWithName() {
         final boolean hasNoProjects = workspaceProjectService.spaceHasNoProjectsWithName(ou1,
                                                                                          "repository1",
                                                                                          new WorkspaceProject(ou1,
@@ -239,7 +254,7 @@ public class WorkspaceProjectServiceImplTest {
     }
 
     @Test
-    public void noProjects() throws Exception {
+    public void noProjects() {
         final OrganizationalUnit organizationalUnit = mock(OrganizationalUnit.class);
         doReturn("myOU").when(organizationalUnit).getName();
 
@@ -249,7 +264,7 @@ public class WorkspaceProjectServiceImplTest {
     }
 
     @Test
-    public void testReturnSameNameIfRepositoryDoesNotExist() {
+    public void testReturnSameNameIfProjectDoesNotExist() {
         String projectName = "projectA";
         POM pom = new POM(projectName,
                           "description",
@@ -265,7 +280,7 @@ public class WorkspaceProjectServiceImplTest {
     }
 
     @Test
-    public void testCreateNewNameIfRepositoryExists() {
+    public void testCreateNewNameIfProjectExists() {
         {
             POM pom = new POM("repository1",
                               "description",
@@ -300,6 +315,42 @@ public class WorkspaceProjectServiceImplTest {
     }
 
     @Test
+    public void testReturnSameNameIfRepositoryDoesNotExist() {
+        String repositoryName = "repositoryA";
+        WorkspaceProjectServiceImpl impl = (WorkspaceProjectServiceImpl) this.workspaceProjectService;
+        String newName = impl.createFreshRepositoryAlias(this.ou1,
+                                                         repositoryName);
+
+        assertEquals(repositoryName,
+                     newName);
+    }
+
+    @Test
+    public void testCreateNewNameIfRepositoryExists() {
+        {
+            String repositoryName = "repository1";
+            WorkspaceProjectServiceImpl impl = (WorkspaceProjectServiceImpl) this.workspaceProjectService;
+            String newName = impl.createFreshProjectName(this.ou1,
+                                                         repositoryName);
+
+            assertEquals("repository1-1",
+                         newName);
+        }
+
+        {
+            doReturn(Optional.of(mock(Branch.class))).when(repository2).getDefaultBranch();
+            doReturn("repository1-1").when(repository2).getAlias();
+
+            WorkspaceProjectServiceImpl impl = (WorkspaceProjectServiceImpl) this.workspaceProjectService;
+            String newName = impl.createFreshProjectName(this.ou1,
+                                                         "repository1");
+
+            assertEquals("repository1-2",
+                         newName);
+        }
+    }
+
+    @Test
     public void testErrorWhenNewProject() {
         String repository1 = "repository1";
         POM pom = new POM(repository1,
@@ -312,6 +363,11 @@ public class WorkspaceProjectServiceImplTest {
                                                      any(),
                                                      any()))
                 .thenReturn(this.repository1);
+
+        when(repositoryService.createRepository(any(), anyString(), anyString(), any(), any())).thenReturn(repository2);
+
+        doReturn(Optional.of(mock(Branch.class))).when(repository2).getDefaultBranch();
+        when(repository2.getAlias()).thenReturn(repository1);
 
         when(this.moduleService.newModule(any(),
                                           any(),

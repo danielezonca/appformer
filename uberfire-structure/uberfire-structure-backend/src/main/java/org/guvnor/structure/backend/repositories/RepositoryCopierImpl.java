@@ -111,14 +111,18 @@ public class RepositoryCopierImpl
 
         if (!branchExisted) {
             fireNewBranchEvent(targetRoot,
-                               nioTargetRepositoryRoot);
+                               nioTargetRepositoryRoot,
+                               originRepositoryRoot);
         }
     }
 
     @Override
-    public void copy(Space space, Path originRoot, Path targetRoot) {
+    public void copy(Space space,
+                     Path originRoot,
+                     Path targetRoot) {
 
-        final boolean branchExisted = (repositoryService.getRepository(space, targetRoot) != null);
+        final boolean branchExisted = (repositoryService.getRepository(space,
+                                                                       targetRoot) != null);
 
         final org.uberfire.java.nio.file.Path nioTargetRepositoryRoot = Paths.convert(targetRoot);
         final org.uberfire.java.nio.file.Path originRepositoryRoot = Paths.convert(originRoot);
@@ -136,41 +140,47 @@ public class RepositoryCopierImpl
         if (!branchExisted) {
             fireNewBranchEvent(space,
                                targetRoot,
-                               nioTargetRepositoryRoot);
+                               nioTargetRepositoryRoot,
+                               originRepositoryRoot);
         }
     }
 
-    private void fireNewBranchEvent(final Path targetRoot,
-                                    final org.uberfire.java.nio.file.Path nioTargetRepositoryRoot) {
-
-        configuredRepositories.reloadRepositories();
+    public void fireNewBranchEvent(final Path targetRoot,
+                                   final org.uberfire.java.nio.file.Path nioTargetRepositoryRoot,
+                                   final org.uberfire.java.nio.file.Path originRepositoryRoot) {
 
         final Repository repository = repositoryService.getRepository(targetRoot);
 
         final Optional<Branch> branch = repository.getBranch(Paths.convert(nioTargetRepositoryRoot.getRoot()));
 
+        final Optional<Branch> origBranch = repository.getBranch(Paths.convert(originRepositoryRoot.getRoot()));
+
         if (branch.isPresent()) {
             newBranchEventEvent.fire(new NewBranchEvent(repository,
                                                         branch.get().getName(),
+                                                        origBranch.get().getName(),
                                                         sessionInfo.getIdentity()));
         } else {
             throw new IllegalStateException("Could not find a branch that was just created. The Path used was " + nioTargetRepositoryRoot.getRoot());
         }
     }
 
-    private void fireNewBranchEvent(final Space space,
-                                    final Path targetRoot,
-                                    final org.uberfire.java.nio.file.Path nioTargetRepositoryRoot) {
+    public void fireNewBranchEvent(final Space space,
+                                   final Path targetRoot,
+                                   final org.uberfire.java.nio.file.Path nioTargetRepositoryRoot,
+                                   final org.uberfire.java.nio.file.Path originRepositoryRoot) {
 
-        configuredRepositories.reloadRepositories();
-
-        final Repository repository = repositoryService.getRepository(space, targetRoot);
+        final Repository repository = repositoryService.getRepository(space,
+                                                                      targetRoot);
 
         final Optional<Branch> branch = repository.getBranch(Paths.convert(nioTargetRepositoryRoot.getRoot()));
+
+        final Optional<Branch> origBranch = repository.getBranch(Paths.convert(originRepositoryRoot.getRoot()));
 
         if (branch.isPresent()) {
             newBranchEventEvent.fire(new NewBranchEvent(repository,
                                                         branch.get().getName(),
+                                                        origBranch.get().getName(),
                                                         sessionInfo.getIdentity()));
         } else {
             throw new IllegalStateException("Could not find a branch that was just created. The Path used was " + nioTargetRepositoryRoot.getRoot());
@@ -196,9 +206,6 @@ public class RepositoryCopierImpl
                     Files.copy(path,
                                resolve,
                                StandardCopyOption.REPLACE_EXISTING);
-
-
-
                 } catch (FileAlreadyExistsException x) {
                     //Swallow
                     x.printStackTrace();
@@ -209,7 +216,8 @@ public class RepositoryCopierImpl
 
     @Override
     public String makeSafeRepositoryName(final String oldName) {
-        return oldName.replace(' ', '-');
+        return oldName.replace(' ',
+                               '-');
     }
 
     static class RecursiveCopier implements FileVisitor<org.uberfire.java.nio.file.Path> {

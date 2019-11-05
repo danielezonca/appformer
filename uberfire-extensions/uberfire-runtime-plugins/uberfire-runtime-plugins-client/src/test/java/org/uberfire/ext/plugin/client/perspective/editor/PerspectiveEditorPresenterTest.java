@@ -31,6 +31,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.uberfire.backend.vfs.ObservablePath;
 import org.uberfire.backend.vfs.Path;
 import org.uberfire.ext.editor.commons.client.history.VersionRecordManager;
@@ -52,8 +53,10 @@ import org.uberfire.ext.plugin.client.security.PluginController;
 import org.uberfire.mocks.EventSourceMock;
 import org.uberfire.mvp.Command;
 import org.uberfire.mvp.PlaceRequest;
+import org.uberfire.promise.SyncPromises;
 
 import static org.junit.Assert.assertEquals;
+import static org.mockito.Matchers.isA;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -113,6 +116,9 @@ public class PerspectiveEditorPresenterTest {
 
     @Mock
     SaveAndRenameCommandBuilder<LayoutTemplate, DefaultMetadata> saveAndRenameCommandBuilder;
+
+    @Spy
+    SyncPromises promises;
 
     @InjectMocks
     PerspectiveEditorPresenter presenter;
@@ -246,6 +252,7 @@ public class PerspectiveEditorPresenterTest {
         when(saveAndRenameCommandBuilder.addContentSupplier(any())).thenReturn(saveAndRenameCommandBuilder);
         when(saveAndRenameCommandBuilder.addIsDirtySupplier(any())).thenReturn(saveAndRenameCommandBuilder);
         when(saveAndRenameCommandBuilder.addSuccessCallback(any())).thenReturn(saveAndRenameCommandBuilder);
+        when(saveAndRenameCommandBuilder.addBeforeSaveAndRenameCommand(isA(Command.class))).thenReturn(saveAndRenameCommandBuilder);
         when(saveAndRenameCommandBuilder.build()).thenReturn(() -> {
         });
     }

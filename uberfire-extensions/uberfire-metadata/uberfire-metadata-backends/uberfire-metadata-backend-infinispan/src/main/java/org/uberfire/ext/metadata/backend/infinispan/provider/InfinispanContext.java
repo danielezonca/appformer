@@ -20,6 +20,7 @@ package org.uberfire.ext.metadata.backend.infinispan.provider;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -31,17 +32,23 @@ import org.infinispan.client.hotrod.RemoteCache;
 import org.infinispan.client.hotrod.RemoteCacheManager;
 import org.infinispan.client.hotrod.configuration.AuthenticationConfigurationBuilder;
 import org.infinispan.client.hotrod.configuration.ConfigurationBuilder;
+import org.infinispan.client.hotrod.configuration.SaslQop;
+import org.infinispan.client.hotrod.exceptions.HotRodClientException;
 import org.infinispan.client.hotrod.marshall.ProtoStreamMarshaller;
+import org.infinispan.commons.CacheConfigurationException;
 import org.infinispan.protostream.BaseMarshaller;
 import org.infinispan.protostream.SerializationContext;
 import org.infinispan.protostream.annotations.ProtoSchemaBuilder;
 import org.infinispan.query.remote.client.ProtobufMetadataManagerConstants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.uberfire.commons.lifecycle.Disposable;
 import org.uberfire.ext.metadata.backend.infinispan.exceptions.InfinispanException;
 import org.uberfire.ext.metadata.backend.infinispan.proto.KObjectMarshaller;
 import org.uberfire.ext.metadata.backend.infinispan.proto.schema.Schema;
 import org.uberfire.ext.metadata.backend.infinispan.proto.schema.SchemaGenerator;
 import org.uberfire.ext.metadata.backend.infinispan.utils.AttributesUtil;
+import org.uberfire.ext.metadata.backend.infinispan.utils.Retry;
 import org.uberfire.ext.metadata.model.KObject;
 
 import static java.util.stream.Collectors.toList;
@@ -54,6 +61,8 @@ public class InfinispanContext implements Disposable {
     private static final String USERNAME = "org.appformer.ext.metadata.infinispan.username";
     private static final String PASSWORD = "org.appformer.ext.metadata.infinispan.password";
     private static final String REALM = "org.appformer.ext.metadata.infinispan.realm";
+    private static final String SERVER_NAME = "org.appformer.ext.metadata.infinispan.server.name";
+    private static final String SASL_QOP = "org.appformer.ext.metadata.infinispan.sasl.qop";
 
     private static final String TYPES_CACHE = "types";
     private static final String SCHEMAS_CACHE = "schemas";
@@ -61,11 +70,15 @@ public class InfinispanContext implements Disposable {
     private static final String SCHEMA_PROTO = "schema.proto";
     private static final String ORG_KIE = "org.kie.";
     public static final String SASL_MECHANISM = "DIGEST-MD5";
-    private final RemoteCacheManager cacheManager;
-    private final KieProtostreamMarshaller marshaller = new KieProtostreamMarshaller();
-    private final SchemaGenerator schemaGenerator;
+    private static final String CACHE_PREFIX = "appformer_";
+    private RemoteCacheManager cacheManager;
+    private KieProtostreamMarshaller marshaller = new KieProtostreamMarshaller();
+    private SchemaGenerator schemaGenerator;
 
-    private final InfinispanConfiguration infinispanConfiguration;
+    private InfinispanConfiguration infinispanConfiguration;
+
+    private Logger logger = LoggerFactory.getLogger(InfinispanContext.class);
+    private Optional<Runnable> initializationObserver = Optional.empty();
 
     private static final class LazyHolder {
 
@@ -85,6 +98,12 @@ public class InfinispanContext implements Disposable {
             put(REALM,
                 System.getProperty(REALM,
                                    "ApplicationRealm"));
+            put(SERVER_NAME,
+                System.getProperty(SERVER_NAME,
+                                   ""));
+            put(SASL_QOP,
+                System.getProperty(SASL_QOP,
+                                   ""));
         }};
         static final InfinispanContext INSTANCE = new InfinispanContext(PROPERTIES);
     }
@@ -94,20 +113,13 @@ public class InfinispanContext implements Disposable {
     }
 
     private InfinispanContext(Map<String, String> properties) {
+
         this.infinispanConfiguration = new InfinispanConfiguration();
         schemaGenerator = new SchemaGenerator();
 
         cacheManager = this.createRemoteCache(properties);
 
-        if (!this.getIndices().contains(TYPES_CACHE)) {
-            cacheManager.administration().createCache(TYPES_CACHE,
-                                                      this.infinispanConfiguration.getConfiguration(TYPES_CACHE));
-        }
-
-        if (!this.getIndices().contains(SCHEMAS_CACHE)) {
-            cacheManager.administration().createCache(SCHEMAS_CACHE,
-                                                      this.infinispanConfiguration.getConfiguration(SCHEMAS_CACHE));
-        }
+        createBaseIndex();
 
         marshaller.registerMarshaller(new KieProtostreamMarshaller.KieMarshallerSupplier<KObject>() {
             @Override
@@ -129,22 +141,40 @@ public class InfinispanContext implements Disposable {
         SerializationContext serializationContext = ProtoStreamMarshaller.getSerializationContext(cacheManager);
 
         addProtobufClass(serializationContext,
-                         SCHEMA_PROTO,
+                         addCachePrefix(SCHEMA_PROTO),
                          Schema.class);
 
+        retrieveProbufSchemas();
+    }
+
+    private void createBaseIndex() {
+        if (!this.getIndices().contains(SCHEMAS_CACHE)) {
+            this.initializationObserver.orElse(() -> {
+            }).run();
+            cacheManager.administration().createCache(getSchemaCacheName(),
+                                                      this.infinispanConfiguration.getConfiguration(getSchemaCacheName()));
+        }
+    }
+
+    public void retrieveProbufSchemas() {
         this.loadProtobufSchema(getProtobufCache());
     }
 
+    private String getSchemaCacheName() {
+        return addCachePrefix(SCHEMAS_CACHE);
+    }
+
+    private String getTypesCacheName() {
+        return addCachePrefix(TYPES_CACHE);
+    }
+
     private RemoteCacheManager createRemoteCache(Map<String, String> properties) {
-        String username = properties.get(USERNAME);
-        String password = properties.get(PASSWORD);
-        String realm = properties.get(REALM);
+
         String host = properties.get(HOST);
         String port = properties.get(PORT);
+
         try {
-            ConfigurationBuilder builder = getMaybeSecurityBuilder(username,
-                                                                   password,
-                                                                   realm)
+            ConfigurationBuilder builder = getMaybeSecurityBuilder(properties)
                     .addServer()
                     .host(host)
                     .port(Integer.parseInt(port))
@@ -159,9 +189,13 @@ public class InfinispanContext implements Disposable {
         }
     }
 
-    private AuthenticationConfigurationBuilder getMaybeSecurityBuilder(String username,
-                                                                       String password,
-                                                                       String realm) {
+    private AuthenticationConfigurationBuilder getMaybeSecurityBuilder(Map<String, String> properties) {
+
+        String username = properties.get(USERNAME);
+        String password = properties.get(PASSWORD);
+        String realm = properties.get(REALM);
+        String saslQop = properties.get(SASL_QOP);
+        String serverName = properties.get(SERVER_NAME);
 
         ConfigurationBuilder b = new ConfigurationBuilder();
 
@@ -170,14 +204,41 @@ public class InfinispanContext implements Disposable {
                           password);
             checkNotEmpty("realm",
                           realm);
+            checkNotEmpty("qop",
+                          saslQop);
+            checkNotEmpty("serverName",
+                          serverName);
             return b.security().authentication()
                     .enable()
                     .saslMechanism(SASL_MECHANISM)
+                    .saslQop(buildSaslQop(saslQop))
+                    .serverName(serverName)
                     .callbackHandler(new LoginHandler(username,
                                                       password.toCharArray(),
                                                       realm));
         } else {
             return b.security().authentication().disable();
+        }
+    }
+
+    protected static SaslQop[] buildSaslQop(String saslQop) {
+        return Arrays.asList(saslQop.split(",")).stream()
+                .map(InfinispanContext::toSaslQop)
+                .toArray(size -> new SaslQop[size]);
+    }
+
+    protected static SaslQop toSaslQop(String value) {
+        try {
+            return SaslQop.valueOf(value.trim()
+                                           .replace('-',
+                                                    '_')
+                                           .toUpperCase());
+        } catch (IllegalArgumentException e) {
+            List<String> values = Arrays.asList(SaslQop.values()).stream().map(SaslQop::toString).collect(toList());
+            throw new InfinispanException(MessageFormat.format("SaslQoP option <{0}> is not present in one of this possible values {1}",
+                                                               value,
+                                                               values),
+                                          e);
         }
     }
 
@@ -201,15 +262,31 @@ public class InfinispanContext implements Disposable {
         return this.cacheManager.getCache(ProtobufMetadataManagerConstants.PROTOBUF_METADATA_CACHE_NAME);
     }
 
+    private static String addCachePrefix(String content) {
+        return CACHE_PREFIX + content;
+    }
+
     public RemoteCache<String, KObject> getCache(String index) {
-        String i = AttributesUtil.toProtobufFormat(index).toLowerCase();
-        if (!this.getIndices().contains(i)) {
-            cacheManager
-                    .administration()
-                    .createCache(i,
-                                 this.infinispanConfiguration.getIndexedConfiguration(i));
+        String cacheName = AttributesUtil.toProtobufFormat(index).toLowerCase();
+
+        if (!this.getIndices().contains(cacheName)) {
+
+            String appformerCacheName = addCachePrefix(cacheName);
+
+            try {
+                cacheManager
+                        .administration()
+                        .createCache(appformerCacheName,
+                                     this.infinispanConfiguration.getIndexedConfiguration(appformerCacheName));
+            } catch (HotRodClientException | CacheConfigurationException ex) {
+                logger.warn("Can't create cache with name <{}>",
+                            appformerCacheName);
+                logger.warn("Cause:",
+                            ex);
+            }
         }
-        return this.cacheManager.getCache(i);
+
+        return this.cacheManager.getCache(addCachePrefix(cacheName));
     }
 
     public List<String> getTypes(String index) {
@@ -238,24 +315,27 @@ public class InfinispanContext implements Disposable {
     }
 
     public void loadProtobufSchema(RemoteCache<String, String> metadataCache) {
-        metadataCache.entrySet()
-                .stream()
-                .filter(entry -> !entry.getKey().equals(SCHEMA_PROTO))
-                .forEach((entry) -> {
-                    int index = entry.getKey().lastIndexOf('.');
-                    String protoTypeName = entry.getKey().substring(0,
-                                                                    index);
-                    String proto = entry.getValue();
 
-                    try {
-                        marshaller.registerSchema(protoTypeName,
-                                                  proto,
-                                                  KObject.class);
-                    } catch (IOException e) {
-                        throw new InfinispanException("Can't add protobuf schema <" + protoTypeName + "> to cache",
-                                                      e);
-                    }
-                });
+        new Retry(5, () -> {
+            metadataCache.entrySet()
+                    .stream()
+                    .filter(entry -> !entry.getKey().equals(addCachePrefix(SCHEMA_PROTO)))
+                    .forEach((entry) -> {
+                        int index = entry.getKey().lastIndexOf('.');
+                        String protoTypeName = entry.getKey().substring(0,
+                                                                        index);
+                        String proto = entry.getValue();
+
+                        try {
+                            marshaller.registerSchema(protoTypeName,
+                                                      proto,
+                                                      KObject.class);
+                        } catch (IOException e) {
+                            throw new InfinispanException("Can't add protobuf schema <" + protoTypeName + "> to cache",
+                                                          e);
+                        }
+                    });
+        }).run();
     }
 
     @Override
@@ -266,17 +346,32 @@ public class InfinispanContext implements Disposable {
     }
 
     public List<String> getIndices() {
-        return new ArrayList<>(this.cacheManager.getCacheNames());
+        return new ArrayList<>(this.cacheManager.getCacheNames())
+                .stream()
+                .filter(s -> s.startsWith(CACHE_PREFIX))
+                .map(s -> s.substring(CACHE_PREFIX.length()))
+                .collect(toList());
     }
 
     public Optional<Schema> getSchema(String clusterId) {
-        Schema schema = (Schema) this.cacheManager.getCache(SCHEMAS_CACHE).get(clusterId.toLowerCase());
+        Schema schema = (Schema) getSchemaCache().get(clusterId.toLowerCase());
         return Optional.ofNullable(schema);
     }
 
     public void addSchema(Schema schema) {
-        this.cacheManager.getCache(SCHEMAS_CACHE).put(AttributesUtil.toProtobufFormat(schema.getName()).toLowerCase(),
-                                                      schema);
+        getSchemaCache().put(AttributesUtil.toProtobufFormat(schema.getName()).toLowerCase(),
+                             schema);
+    }
+
+    private RemoteCache<Object, Object> getSchemaCache() {
+        this.createBaseIndex();
+        return this.cacheManager.getCache(getSchemaCacheName());
+    }
+
+    public void observeInitialization(Runnable runnable) {
+        this.initializationObserver = Optional.of(runnable);
     }
 }
+
+
 

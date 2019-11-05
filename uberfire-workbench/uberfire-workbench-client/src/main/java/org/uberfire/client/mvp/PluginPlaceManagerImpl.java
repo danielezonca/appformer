@@ -132,8 +132,20 @@ public class PluginPlaceManagerImpl implements PlaceManager {
     }
 
     @Override
+    public void goTo(String id,
+                     HTMLElement addTo) {
+        fail();
+    }
+
+    @Override
     public void goTo(PlaceRequest place,
                      HTMLElement addTo) {
+        fail();
+    }
+
+    @Override
+    public void goTo(PlaceRequest place,
+                     elemental2.dom.HTMLElement addTo) {
         fail();
     }
 
@@ -214,6 +226,12 @@ public class PluginPlaceManagerImpl implements PlaceManager {
 
     @Override
     public boolean canClosePlace(final PlaceRequest place) {
+        fail();
+        return false;
+    }
+
+    @Override
+    public boolean canCloseAllPlaces() {
         fail();
         return false;
     }

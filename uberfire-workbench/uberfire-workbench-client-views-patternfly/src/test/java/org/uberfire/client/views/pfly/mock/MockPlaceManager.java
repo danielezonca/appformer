@@ -97,8 +97,20 @@ public class MockPlaceManager implements PlaceManager {
     }
 
     @Override
+    public void goTo(String id,
+                     HTMLElement addTo) {
+        throw new UnsupportedOperationException("Not implemented.");
+    }
+
+    @Override
     public void goTo(PlaceRequest place,
                      HTMLElement addTo) {
+        throw new UnsupportedOperationException("Not implemented.");
+    }
+
+    @Override
+    public void goTo(PlaceRequest place,
+                     elemental2.dom.HTMLElement addTo) {
         throw new UnsupportedOperationException("Not implemented.");
     }
 
@@ -166,6 +178,11 @@ public class MockPlaceManager implements PlaceManager {
 
     @Override
     public boolean canClosePlace(final PlaceRequest place) {
+        throw new UnsupportedOperationException("Not implemented.");
+    }
+
+    @Override
+    public boolean canCloseAllPlaces() {
         throw new UnsupportedOperationException("Not implemented.");
     }
 

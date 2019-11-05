@@ -15,10 +15,13 @@
  */
 package org.dashbuilder.client.cms.screen.explorer;
 
+import java.util.function.Consumer;
+
 import org.dashbuilder.client.cms.resources.i18n.ContentManagerI18n;
 import org.dashbuilder.client.navigation.NavigationManager;
 import org.dashbuilder.client.navigation.event.NavTreeLoadedEvent;
-import org.dashbuilder.client.navigation.event.PerspectivePluginsChangedEvent;
+import org.dashbuilder.navigation.event.NavTreeChangedEvent;
+import org.dashbuilder.navigation.event.PerspectivePluginsChangedEvent;
 import org.dashbuilder.client.navigation.widget.editor.NavTreeEditor;
 import org.dashbuilder.navigation.NavTree;
 import org.jboss.errai.common.client.api.IsElement;
@@ -84,11 +87,11 @@ public class NavigationExplorerScreen {
     }
 
     @WorkbenchMenu
-    public Menus getMenus() {
-        return MenuFactory.newTopLevelMenu(i18n.getContentExplorerNew())
-                .respondsWith(this::createNewNavigationTree)
-                .endMenu()
-                .build();
+    public void getMenus(final Consumer<Menus> menusConsumer) {
+        menusConsumer.accept(MenuFactory.newTopLevelMenu(i18n.getContentExplorerNew())
+                                     .respondsWith(this::createNewNavigationTree)
+                                     .endMenu()
+                                     .build());
     }
 
     public NavTreeEditor getNavTreeEditor() {
@@ -101,12 +104,24 @@ public class NavigationExplorerScreen {
 
     void onNavTreeLoaded(@Observes NavTreeLoadedEvent event) {
         NavTree navTree = event.getNavTree();
-        navTreeEditor.edit(navTree);
+        if (navTree != null) {
+            navTreeEditor.edit(navTree);
+        }
     }
 
     void onPerspectivesChanged(@Observes PerspectivePluginsChangedEvent event) {
         NavTree navTree = navigationManager.getNavTree();
-        navTreeEditor.edit(navTree);
+        if (navTree != null) {
+            navTreeEditor.edit(navTree);
+        }
+    }
+
+    public void onNavTreeChanged(@Observes final NavTreeChangedEvent event) {
+        NavTree navTree = event.getNavTree();
+        if (navTree != null) {
+            navigationManager.update(navTree);
+            navTreeEditor.edit(navTree);
+        }
     }
 
     void onNavTreeSaved() {
@@ -115,6 +130,8 @@ public class NavigationExplorerScreen {
 
     void onAuthzPolicyChanged(@Observes final AuthorizationPolicySavedEvent event) {
         NavTree navTree = navigationManager.getNavTree();
-        navTreeEditor.edit(navTree);
+        if (navTree != null) {
+            navTreeEditor.edit(navTree);
+        }
     }
 }

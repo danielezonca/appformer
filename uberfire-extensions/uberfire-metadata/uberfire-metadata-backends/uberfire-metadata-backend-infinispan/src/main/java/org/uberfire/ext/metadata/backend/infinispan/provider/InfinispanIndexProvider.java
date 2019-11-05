@@ -194,6 +194,10 @@ public class InfinispanIndexProvider implements IndexProvider {
         try {
             return supplier.get();
         } catch (Exception e) {
+            if (logger.isDebugEnabled()) {
+                logger.error("Error executing query",
+                             e);
+            }
             return Collections.emptyList();
         }
     }
@@ -202,6 +206,10 @@ public class InfinispanIndexProvider implements IndexProvider {
         try {
             return supplier.get();
         } catch (Exception e) {
+            if (logger.isDebugEnabled()) {
+                logger.error("Error executing query",
+                             e);
+            }
             return 0;
         }
     }
@@ -223,6 +231,11 @@ public class InfinispanIndexProvider implements IndexProvider {
         return this.infinispanContext.getIndices();
     }
 
+    @Override
+    public void observerInitialization(Runnable runnable) {
+        this.infinispanContext.observeInitialization(runnable);
+    }
+
     protected QueryFactory getQueryFactory(String index) {
         return Search
                 .getQueryFactory(this.infinispanContext.getCache(index.toLowerCase()));
@@ -236,6 +249,8 @@ public class InfinispanIndexProvider implements IndexProvider {
     private List<org.infinispan.query.dsl.Query> findByQueryRaw(List<String> indices,
                                                                 Query query,
                                                                 Sort sort) {
+
+        this.infinispanContext.retrieveProbufSchemas();
 
         String whereClause = this.ickleConverter.where(query);
         String sortClause = this.ickleConverter.sort(sort);
